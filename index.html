@@ -1,0 +1,1854 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moving Platform Inverse Kinematics (IK) Builder</title>
+  <style>
+    :root {
+      --bg: #f4f1e8;
+      --ink: #171714;
+      --muted: #69665c;
+      --line: #d5cdbb;
+      --panel: #fffcf3;
+      --panel-strong: #f0e6d1;
+      --accent: #0e7c86;
+      --accent-2: #c84c2f;
+      --accent-3: #8b6f12;
+      --shadow: 0 18px 55px rgba(42, 33, 18, 0.12);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(23, 23, 20, 0.035) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(23, 23, 20, 0.035) 1px, transparent 1px),
+        var(--bg);
+      background-size: 24px 24px;
+      font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+    }
+
+    button, input, select { font: inherit; }
+
+    .app {
+      min-height: 100vh;
+      padding: 28px;
+      display: grid;
+      grid-template-columns: minmax(380px, 520px) minmax(520px, 1fr);
+      gap: 22px;
+    }
+
+    .left, .right { min-width: 0; }
+
+    .header {
+      margin-bottom: 18px;
+      padding: 18px 0 12px;
+      border-bottom: 2px solid var(--ink);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(32px, 4vw, 58px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .panel {
+      background: rgba(255, 252, 243, 0.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .block {
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      margin: 0 0 14px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    input, select {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      padding: 7px 9px;
+      color: var(--ink);
+      background: #fffefa;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      outline: none;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(14, 124, 134, 0.14);
+    }
+
+    button {
+      min-height: 38px;
+      padding: 8px 12px;
+      color: var(--panel);
+      background: var(--ink);
+      border: 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    button.secondary {
+      color: var(--ink);
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .constraint {
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+
+    .constraint-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--panel-strong);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .constraint-name {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-weight: 800;
+    }
+
+    .badge {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--accent);
+      font-size: 13px;
+    }
+
+    .constraint-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .mini {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .result {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .readout {
+      padding: 16px;
+      background: var(--ink);
+      color: var(--panel);
+      border-radius: 8px;
+    }
+
+    .readout span {
+      display: block;
+      margin-bottom: 8px;
+      color: #d9d0bd;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .readout strong {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(22px, 2.6vw, 34px);
+      letter-spacing: 0;
+    }
+
+    .sequence {
+      display: grid;
+      gap: 10px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      padding: 12px;
+      background: #fffefa;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .step-index {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--ink);
+      border-radius: 50%;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fffefa;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-size: 12px;
+    }
+
+    th, td {
+      padding: 8px 9px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--ink);
+      background: var(--panel-strong);
+      font-weight: 800;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    tr.active-frame td {
+      background: rgba(14, 124, 134, 0.12);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+
+    .check-summary {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding: 12px;
+      background: #fffefa;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .check-summary strong { color: var(--ink); }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 76px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .status-ok { background: var(--accent); }
+    .status-warn { background: var(--accent-3); }
+    .status-bad { background: var(--accent-2); }
+
+    .player {
+      display: grid;
+      gap: 10px;
+      margin-top: 16px;
+      padding: 12px;
+      background: #fffefa;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .player-row {
+      display: grid;
+      grid-template-columns: auto auto minmax(160px, 1fr) minmax(100px, 160px) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .player-row button { min-width: 82px; }
+
+    input[type="range"] {
+      padding: 0;
+      accent-color: var(--accent);
+    }
+
+    @media (max-width: 720px) {
+      .player-row { grid-template-columns: 1fr 1fr; align-items: stretch; }
+    }
+
+    .canvas-wrap {
+      position: relative;
+      height: min(58vh, 560px);
+      min-height: 430px;
+      margin-top: 16px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 28% 24%, rgba(14, 124, 134, 0.12), transparent 30%),
+        radial-gradient(circle at 72% 72%, rgba(200, 76, 47, 0.12), transparent 26%),
+        #fffefa;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    canvas:active { cursor: grabbing; }
+
+    .legend {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pill {
+      padding: 7px 9px;
+      background: rgba(255, 252, 243, 0.86);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+    }
+
+    .formula {
+      margin-top: 16px;
+      padding: 14px 16px;
+      color: var(--muted);
+      background: rgba(255, 252, 243, 0.9);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      line-height: 1.5;
+    }
+
+    .formula h3 {
+      margin: 0 0 10px;
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 20px;
+    }
+
+    .formula-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .formula-card {
+      min-width: 0;
+      padding: 12px;
+      background: #fffefa;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .formula-card strong {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--ink);
+    }
+
+    .formula-card p { margin: 6px 0; }
+
+    .math-block {
+      margin: 8px 0;
+      padding: 10px;
+      overflow-x: auto;
+      color: var(--ink);
+      background: #f7f0df;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre;
+    }
+
+    code {
+      color: var(--ink);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 0.95em;
+    }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; padding: 18px; }
+      .canvas-wrap { min-height: 360px; }
+    }
+
+    @media (max-width: 560px) {
+      .grid-3, .grid-2, .result, .formula-grid { grid-template-columns: 1fr; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="left">
+      <div class="header">
+        <h1>Platform Inverse Kinematics (IK) Builder</h1>
+        <p class="subtitle">把 sample/platform 当作一个刚体，在平台任意位置添加连接点；每条连杆另一端可以接到一维 slider，也可以接到固定 anchor。</p>
+      </div>
+
+      <section class="panel block">
+        <h2 class="section-title">目标 sample 位姿</h2>
+        <div class="grid-3">
+          <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
+          <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
+          <label>Target Z <input id="target-z" type="number" step="0.1" value="6"></label>
+        </div>
+        <div class="grid-3" style="margin-top:10px">
+          <label>Yaw deg <input id="target-yaw" type="number" step="1" value="0"></label>
+          <label>Pitch deg <input id="target-pitch" type="number" step="1" value="0"></label>
+          <label>Roll deg <input id="target-roll" type="number" step="1" value="0"></label>
+        </div>
+      </section>
+
+      <section class="panel block">
+        <h2 class="section-title">Sample 几何</h2>
+        <div class="grid-3">
+          <label>Size X <input id="sample-x" type="number" min="0.1" step="0.1" value="2"></label>
+          <label>Size Y <input id="sample-y" type="number" min="0.1" step="0.1" value="2"></label>
+          <label>Size Z <input id="sample-z" type="number" min="0.1" step="0.1" value="2"></label>
+        </div>
+        <div class="grid-3" style="margin-top:10px">
+          <label>Ref X <input id="ref-x" type="number" step="0.1" value="0"></label>
+          <label>Ref Y <input id="ref-y" type="number" step="0.1" value="0"></label>
+          <label>Ref Z <input id="ref-z" type="number" step="0.1" value="0"></label>
+        </div>
+      </section>
+
+      <section class="panel block">
+        <h2 class="section-title">运动轨迹 / Middle positions</h2>
+        <div class="mini" style="margin-bottom:10px">
+          这里不是设置 motor 本身，而是设置 sample 从哪里开始、要去哪里。<code>Current</code> 是起点 sample 位姿；左上面的 <code>Target sample 位姿</code> 是终点；<code>Steps</code> 是把这条路切成几段来检查。
+        </div>
+        <div class="grid-3">
+          <label>Current X <input id="current-x" type="number" step="0.1" value="0"></label>
+          <label>Current Y <input id="current-y" type="number" step="0.1" value="0"></label>
+          <label>Current Z <input id="current-z" type="number" step="0.1" value="6"></label>
+        </div>
+        <div class="grid-3" style="margin-top:10px">
+          <label>Current yaw <input id="current-yaw" type="number" step="1" value="0"></label>
+          <label>Current pitch <input id="current-pitch" type="number" step="1" value="0"></label>
+          <label>Current roll <input id="current-roll" type="number" step="1" value="0"></label>
+        </div>
+        <div class="grid-2" style="margin-top:10px">
+          <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
+        </div>
+        <div class="grid-2" style="margin-top:10px">
+          <label>Max lift <input id="lift-max" type="number" min="0" step="0.5" value="20"></label>
+          <label>Lift step <input id="lift-step" type="number" min="0.1" step="0.1" value="0.5"></label>
+        </div>
+        <div class="mini" style="margin-top:10px">检查结果在右侧 <code>Path Feasibility Check</code>。每一个 middle position 都会同时反求所有 actuator 的目标 stroke，并用上一帧 stroke 选最近解，避免跳到另一支解。</div>
+      </section>
+
+      <section class="panel block">
+        <div class="toolbar">
+          <h2 class="section-title" style="margin:0">连接/约束</h2>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <button id="load-example" class="secondary" type="button">Load example mechanism</button>
+            <button id="add-constraint" type="button">Add link</button>
+          </div>
+        </div>
+        <div class="mini">每条 link 都从 sample 上的局部连接点 <code>a_i</code> 出发，另一端可以是 slider 或固定 anchor。截图例子可近似加载成：右侧 sample、左侧 slider 支撑、底部/侧边 fixed anchors。</div>
+      </section>
+
+      <section id="constraints"></section>
+    </section>
+
+    <section class="right">
+      <section class="result" aria-live="polite">
+        <div class="readout"><span>Target X</span><strong id="out-x">0.00</strong></div>
+        <div class="readout"><span>Target Y</span><strong id="out-y">0.00</strong></div>
+        <div class="readout"><span>Target Z</span><strong id="out-z">0.00</strong></div>
+      </section>
+
+      <section class="panel block" style="margin-top:16px">
+        <h2 class="section-title">Inverse Kinematics / Constraint Check</h2>
+        <div id="ik-output" class="sequence"></div>
+      </section>
+
+      <section class="panel block" style="margin-top:16px">
+        <h2 class="section-title">Path Feasibility Check / Trajectory Commands</h2>
+        <div id="trajectory-output"></div>
+      </section>
+
+      <section class="panel block" style="margin-top:16px">
+        <h2 class="section-title">Verification Panel / 反代检查</h2>
+        <div id="verification-output"></div>
+      </section>
+
+      <section class="canvas-wrap">
+        <canvas id="view"></canvas>
+        <div class="legend">
+          <span class="pill">black: sample</span>
+          <span class="pill">s: slider stroke</span>
+          <span class="pill">L: rod/link</span>
+          <span class="pill">chain: multi-link reach</span>
+          <span class="pill">F: fixed anchor</span>
+          <span class="pill">drag: rotate</span>
+          <span class="pill">wheel: zoom</span>
+        </div>
+      </section>
+
+      <section class="player" aria-label="trajectory animation controls">
+        <div class="player-row">
+          <button id="anim-play" type="button">Play</button>
+          <button id="anim-reset" class="secondary" type="button">Reset</button>
+          <label>Frame <input id="anim-frame" type="range" min="0" max="0" step="1" value="0"></label>
+          <label>Speed <input id="anim-speed" type="number" min="0.2" max="5" step="0.1" value="1"></label>
+          <label>Path
+            <select id="anim-path">
+              <option value="direct">direct path</option>
+              <option value="lift">lift path</option>
+            </select>
+          </label>
+        </div>
+        <div id="anim-readout" class="mini">Frame 1 / 1</div>
+      </section>
+
+      <section class="formula">
+        <h3>核心公式与算法</h3>
+        <div class="formula-card" style="margin-bottom:12px">
+          <strong>0. 符号表：先看这里</strong>
+          <p><code>i</code>：第 i 条连杆/link，例如 A、B、C。</p>
+          <p><code>p</code>：sample 参考点在全局坐标里的目标位置。</p>
+          <p><code>R</code>：sample 的目标姿态旋转矩阵。</p>
+          <p><code>r</code>：sample 参考点在 sample 自己局部坐标里的位置，通常是 <code>[0,0,0]</code>。</p>
+          <p><code>a_i</code>：第 i 条连杆接在 sample 上的那个点，使用 sample 局部坐标。</p>
+          <p><code>q_i</code>：第 i 个 sample 连接点变换到全局坐标后的目标位置，也就是连杆应该接到 sample 的位置。</p>
+          <p><code>b_i</code>：slider 的 base 点，也就是滑块轨道的起点/参考点。</p>
+          <p><code>v_i</code>：slider 正方向的单位向量。</p>
+          <p><code>s_i</code>：slider 的目标绝对位置/stroke，不是移动量。</p>
+          <p><code>Δs</code>：slider 需要移动的量，<code>Δs = s_target - s_current</code>。</p>
+          <p><code>f_i</code>：fixed anchor 的全局坐标，也就是固定端的位置。</p>
+          <p><code>L_i</code>：第 i 条连杆的长度；如果是多连杆链，则是 <code>L_i1,L_i2,...</code>。</p>
+          <p><code>residual / e_i</code>：长度误差，等于“实际算出来的距离 - 设定杆长”。越接近 0 越满足约束。</p>
+          <p><code>rod axis</code>：连杆从起点指向 sample 连接点的单位方向向量，不是 slider 轴。</p>
+          <p><code>chain lengths</code>：多连杆链中每一段杆的长度，例如 <code>1.4, 1.2, 1.0</code>。</p>
+          <p><code>feasible stroke interval</code>：多连杆链能达到 sample 连接点时，slider stroke 可以落入的区间。</p>
+          <p><code>middle position</code>：运动路径中的中间 sample 位姿；每个中间位姿都会同时反求所有 actuator。</p>
+        </div>
+        <div class="formula-grid">
+          <div class="formula-card">
+            <strong>1. 平台刚体变换</strong>
+            <p>平台目标位姿是 <code>p,R</code>。平台上的局部连接点是 <code>a_i</code>，参考点是 <code>r</code>。</p>
+            <p><code>q_i = p + R(a_i - r)</code></p>
+            <p><code>q_i</code> 的意思是：第 i 条连杆在 sample 上的连接点，经过 sample 位姿变换后，在全局坐标里的位置。</p>
+            <p>一旦 sample 位姿确定，每个 <code>q_i</code> 都确定，所以每条连杆可以独立反求自己的自由度。</p>
+          </div>
+          <div class="formula-card">
+            <strong>2. Slider + rod</strong>
+            <p>slider base 是 <code>b_i</code>，stroke 正方向是单位向量 <code>v_i</code>，连杆长度是 <code>L_i</code>。</p>
+            <p><code>m_i(s_i)=b_i+s_i v_i</code></p>
+            <p><code>m_i</code> 是 slider 端点的位置，<code>s_i</code> 是 slider 的目标绝对位置。</p>
+            <p><code>||q_i-m_i(s_i)||^2=L_i^2</code></p>
+          </div>
+          <div class="formula-card">
+            <strong>3. Slider 解析解</strong>
+            <p>令 <code>c_i=q_i-b_i</code>，展开得：</p>
+            <p><code>s_i^2-2(v_i^T c_i)s_i+(c_i^T c_i-L_i^2)=0</code></p>
+            <p><code>s_i=v_i^T c_i ± sqrt((v_i^T c_i)^2-(c_i^T c_i-L_i^2))</code></p>
+          </div>
+          <div class="formula-card">
+            <strong>4. Fixed anchor</strong>
+            <p>固定 anchor 位置是 <code>f_i</code>。它没有 motor command，只检查约束误差：</p>
+            <p><code>e_i = ||q_i-f_i|| - L_i</code></p>
+            <p><code>e_i</code> 也叫 residual。若 <code>e_i=0</code>，该固定连杆满足目标位姿；否则该目标位姿与固定约束不一致。</p>
+          </div>
+          <div class="formula-card">
+            <strong>5. Rod pose</strong>
+            <p>每条杆的起点和终点确定后，杆的姿态也确定。</p>
+            <p><code>center_i = (start_i + q_i)/2</code></p>
+            <p><code>axis_i = (q_i - start_i)/||q_i - start_i||</code></p>
+            <p><code>start_i</code> 是连杆的另一端：slider link 里是 slider 端点 <code>m_i</code>，fixed link 里是固定点 <code>f_i</code>。</p>
+            <p>GUI 输出 <code>center</code>、<code>axis</code>、<code>yaw</code>、<code>pitch</code>。</p>
+          </div>
+          <div class="formula-card">
+            <strong>6. Multi-link chain</strong>
+            <p>如果 sample 点不是直接接到 slider，而是经过多根杆串联到 slider，设杆长为 <code>L_1,L_2,...,L_n</code>。</p>
+            <p>最大可达距离：<code>Rmax = L_1+L_2+...+L_n</code></p>
+            <p>最小可达距离：<code>Rmin = max(0, Lmax - sum(other L))</code></p>
+            <p>slider 点 <code>m(s)</code> 到 sample 连接点 <code>q</code> 的距离必须满足：<code>Rmin <= ||q-m(s)|| <= Rmax</code>。</p>
+            <p>这会给出一个可行 stroke 区间；中间每根杆的折叠姿态若没有 hinge plane/axis，则不唯一。</p>
+          </div>
+          <div class="formula-card">
+            <strong>7. 轨迹和同步控制</strong>
+            <p>从 current pose 到 target pose 取若干个中间位姿：</p>
+            <p><code>p(t)=(1-t)p_0+t p_1</code></p>
+            <p><code>yaw(t), pitch(t), roll(t)</code> 也按同样方式插值。</p>
+            <p>对每一个 <code>t_k</code>，先算所有 <code>q_i(t_k)</code>，再同时反求所有 <code>s_i(t_k)</code>。</p>
+            <p>所以实际控制不是“先动 A 再动 B”，而是在同一时间步发送 <code>[s_A, s_B, ...]</code>。GUI 中 <code>Δprev</code> 是每个 actuator 从上一帧到这一帧的增量。</p>
+          </div>
+          <div class="formula-card">
+            <strong>8. 自动找 lift height</strong>
+            <p>设 <code>h</code> 是额外抬高量，<code>Z_high=max(Z_current,Z_target)+h</code>。</p>
+            <p>构造两个 waypoint：</p>
+            <p><code>W1=[X_current,Y_current,Z_high]</code></p>
+            <p><code>W2=[X_target,Y_target,Z_high]</code></p>
+            <p>程序从 <code>h=0</code> 开始，每次加 <code>Lift step</code>，检查路径 <code>Current -> W1 -> W2 -> Target</code>。第一个所有 step 都 <code>OK</code> 的 <code>h</code> 就是当前搜索精度下的最小可行抬高量。</p>
+          </div>
+        </div>
+        <div id="numeric-derivation" class="formula-card" style="margin-top:12px"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const colors = ["#0e7c86", "#c84c2f", "#8b6f12", "#5a6fb0", "#6b8f38", "#a64b7a"];
+    let constraints = [
+      { id: "A", type: "chainSlider", color: colors[0], attach: [-1, -1, -1], base: [-4, -2, 6], yaw: 0, pitch: 0, roll: 0, axis: "x", length: 2.5, chainLengths: "1.2, 1.3", currentStroke: 1, strokeMin: -20, strokeMax: 20, branch: "nearest" },
+      { id: "B", type: "slider", color: colors[1], attach: [1, -1, -1], base: [4, -2, 6], yaw: 180, pitch: 0, roll: 0, axis: "x", length: 2.5, currentStroke: 1, strokeMin: -20, strokeMax: 20, branch: "nearest" },
+      { id: "C", type: "fixed", color: colors[2], attach: [0, 1, 1], base: [0, 4, 6.5], yaw: 0, pitch: 0, roll: 0, axis: "x", length: 3.04, branch: "minus" }
+    ];
+
+    const el = (id) => document.getElementById(id);
+    const readNumber = (id) => Number.parseFloat(el(id).value) || 0;
+    const toRad = (deg) => deg * Math.PI / 180;
+    const viewState = { yaw: -0.72, pitch: 0.82, zoom: 16, dragging: false, lastX: 0, lastY: 0 };
+    const animationState = { playing: false, frameIndex: 0, lastTime: 0, rafId: null };
+
+    function rotationMatrix(yawDeg, pitchDeg, rollDeg) {
+      const yaw = toRad(yawDeg);
+      const pitch = toRad(pitchDeg);
+      const roll = toRad(rollDeg);
+      const cy = Math.cos(yaw), sy = Math.sin(yaw);
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const cr = Math.cos(roll), sr = Math.sin(roll);
+      const rz = [[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]];
+      const ry = [[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]];
+      const rx = [[1, 0, 0], [0, cr, -sr], [0, sr, cr]];
+      return multiply3(multiply3(rz, ry), rx);
+    }
+
+    function multiply3(a, b) {
+      return a.map((row) => b[0].map((_, col) =>
+        row.reduce((sum, value, index) => sum + value * b[index][col], 0)
+      ));
+    }
+
+    function transform(matrix, vector) {
+      return matrix.map((row) => row.reduce((sum, value, index) => sum + value * vector[index], 0));
+    }
+
+    function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+    function subtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+    function scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
+    function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+    function length(a) { return Math.sqrt(dot(a, a)); }
+    function normalize(a) {
+      const len = length(a);
+      return len > 1e-9 ? scale(a, 1 / len) : [0, 0, 0];
+    }
+    function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+    function fmt(value) { return Number.isFinite(value) ? value.toFixed(2) : "0.00"; }
+    function localAxis(axis) {
+      if (axis === "y") return [0, 1, 0];
+      if (axis === "z") return [0, 0, 1];
+      return [1, 0, 0];
+    }
+
+    function parseChainLengths(value, fallback) {
+      const lengths = String(value || "")
+        .split(/[,\s;]+/)
+        .map((item) => Number.parseFloat(item))
+        .filter((item) => Number.isFinite(item) && item > 0);
+      return lengths.length ? lengths : [fallback];
+    }
+
+    function chainReach(lengths) {
+      const total = lengths.reduce((sum, item) => sum + item, 0);
+      const maxSegment = Math.max(...lengths);
+      return {
+        min: Math.max(0, maxSegment - (total - maxSegment)),
+        max: total
+      };
+    }
+
+    function clampToIntervals(value, intervals) {
+      const inside = intervals.find(([lo, hi]) => value >= lo && value <= hi);
+      if (inside) return value;
+      const candidates = intervals.flat();
+      return candidates.reduce((best, candidate) =>
+        Math.abs(candidate - value) < Math.abs(best - value) ? candidate : best
+      );
+    }
+
+    function renderConstraints() {
+      el("constraints").innerHTML = constraints.map((item, index) => `
+        <article class="panel constraint">
+          <div class="constraint-head">
+            <div class="constraint-name"><span class="badge" style="background:${item.color}">${item.id}</span> Link ${item.id}</div>
+            <button class="secondary" type="button" data-remove="${item.id}">Remove</button>
+          </div>
+          <div class="constraint-body">
+            <div class="grid-2">
+              <label>End type
+                <select id="${item.id}-type">
+                  <option value="slider" ${item.type === "slider" ? "selected" : ""}>1D slider</option>
+                  <option value="chainSlider" ${item.type === "chainSlider" ? "selected" : ""}>multi-link to slider</option>
+                  <option value="fixed" ${item.type === "fixed" ? "selected" : ""}>fixed anchor</option>
+                </select>
+              </label>
+              <label>Rod length <input id="${item.id}-length" type="number" min="0" step="0.1" value="${item.length}"></label>
+            </div>
+            <div class="grid-2">
+              <label>Chain lengths <input id="${item.id}-chain" type="text" value="${item.chainLengths || item.length}" ${item.type === "chainSlider" ? "" : "disabled"}></label>
+            </div>
+            <div class="grid-2">
+              <label>Current stroke <input id="${item.id}-current" type="number" step="0.1" value="${item.currentStroke || 0}" ${item.type === "fixed" ? "disabled" : ""}></label>
+              <label>Solution branch
+                <select id="${item.id}-branch" ${item.type === "fixed" ? "disabled" : ""}>
+                  <option value="nearest" ${item.branch === "nearest" ? "selected" : ""}>nearest current</option>
+                  <option value="positive" ${item.branch === "positive" ? "selected" : ""}>positive stroke</option>
+                  <option value="minus" ${item.branch === "minus" ? "selected" : ""}>minus / short</option>
+                  <option value="plus" ${item.branch === "plus" ? "selected" : ""}>plus / long</option>
+                </select>
+              </label>
+            </div>
+            <div class="grid-2">
+              <label>Stroke min <input id="${item.id}-stroke-min" type="number" step="0.1" value="${Number.isFinite(item.strokeMin) ? item.strokeMin : -20}" ${item.type === "fixed" ? "disabled" : ""}></label>
+              <label>Stroke max <input id="${item.id}-stroke-max" type="number" step="0.1" value="${Number.isFinite(item.strokeMax) ? item.strokeMax : 20}" ${item.type === "fixed" ? "disabled" : ""}></label>
+            </div>
+            <div class="grid-3">
+              ${["x", "y", "z"].map((axis, axisIndex) => `
+                <label>Attach ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${item.attach[axisIndex]}"></label>
+              `).join("")}
+            </div>
+            <div class="grid-3">
+              ${["x", "y", "z"].map((axis, axisIndex) => `
+                <label>${item.type === "fixed" ? "Anchor" : "Slider base"} ${axis.toUpperCase()} <input id="${item.id}-base-${axis}" type="number" step="0.1" value="${item.base[axisIndex]}"></label>
+              `).join("")}
+            </div>
+            <div class="grid-3">
+              <label>Yaw deg <input id="${item.id}-yaw" type="number" step="1" value="${item.yaw}"></label>
+              <label>Pitch deg <input id="${item.id}-pitch" type="number" step="1" value="${item.pitch}"></label>
+              <label>Roll deg <input id="${item.id}-roll" type="number" step="1" value="${item.roll}"></label>
+            </div>
+            <div class="grid-2">
+              <label>Slider axis
+                <select id="${item.id}-axis" ${item.type === "fixed" ? "disabled" : ""}>
+                  <option value="x" ${item.axis === "x" ? "selected" : ""}>local X</option>
+                  <option value="y" ${item.axis === "y" ? "selected" : ""}>local Y</option>
+                  <option value="z" ${item.axis === "z" ? "selected" : ""}>local Z</option>
+                </select>
+              </label>
+            </div>
+            <div class="mini">${item.type === "fixed" ? "Fixed anchor 没有 motor command，只检查目标位姿是否满足这条固定连杆长度。" : item.type === "chainSlider" ? "Multi-link 表示中间有多根杆串联到 slider；GUI 先求 slider 可行区间，再选离 current stroke 最近的目标。" : "Current stroke 是现在滑块在轴上的绝对位置；GUI 输出 target stroke 和 move Δs = target - current。"}</div>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function syncConstraintsFromInputs() {
+      constraints = constraints.map((item) => ({
+        ...item,
+        type: el(`${item.id}-type`).value,
+        attach: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`)),
+        base: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-base-${axis}`)),
+        yaw: readNumber(`${item.id}-yaw`),
+        pitch: readNumber(`${item.id}-pitch`),
+        roll: readNumber(`${item.id}-roll`),
+        axis: el(`${item.id}-axis`) ? el(`${item.id}-axis`).value : item.axis,
+        branch: el(`${item.id}-branch`) ? el(`${item.id}-branch`).value : item.branch,
+        currentStroke: el(`${item.id}-current`) ? readNumber(`${item.id}-current`) : item.currentStroke || 0,
+        strokeMin: el(`${item.id}-stroke-min`) ? readNumber(`${item.id}-stroke-min`) : Number.isFinite(item.strokeMin) ? item.strokeMin : -20,
+        strokeMax: el(`${item.id}-stroke-max`) ? readNumber(`${item.id}-stroke-max`) : Number.isFinite(item.strokeMax) ? item.strokeMax : 20,
+        chainLengths: el(`${item.id}-chain`) ? el(`${item.id}-chain`).value : item.chainLengths || String(item.length),
+        length: readNumber(`${item.id}-length`)
+      }));
+    }
+
+    function poseFromInputPrefix(prefix) {
+      return {
+        position: [readNumber(`${prefix}-x`), readNumber(`${prefix}-y`), readNumber(`${prefix}-z`)],
+        reference: [readNumber("ref-x"), readNumber("ref-y"), readNumber("ref-z")],
+        yaw: readNumber(`${prefix}-yaw`),
+        pitch: readNumber(`${prefix}-pitch`),
+        roll: readNumber(`${prefix}-roll`),
+        rotation: rotationMatrix(readNumber(`${prefix}-yaw`), readNumber(`${prefix}-pitch`), readNumber(`${prefix}-roll`))
+      };
+    }
+
+    function targetPoseFromInputs() {
+      return poseFromInputPrefix("target");
+    }
+
+    function currentPoseFromInputs() {
+      return poseFromInputPrefix("current");
+    }
+
+    function interpolatePose(start, end, t) {
+      const lerp = (a, b) => a + (b - a) * t;
+      const yaw = lerp(start.yaw, end.yaw);
+      const pitch = lerp(start.pitch, end.pitch);
+      const roll = lerp(start.roll, end.roll);
+      return {
+        position: [
+          lerp(start.position[0], end.position[0]),
+          lerp(start.position[1], end.position[1]),
+          lerp(start.position[2], end.position[2])
+        ],
+        reference: end.reference,
+        yaw,
+        pitch,
+        roll,
+        rotation: rotationMatrix(yaw, pitch, roll)
+      };
+    }
+
+    function poseAt(position, anglesFrom, reference) {
+      return {
+        position,
+        reference,
+        yaw: anglesFrom.yaw,
+        pitch: anglesFrom.pitch,
+        roll: anglesFrom.roll,
+        rotation: rotationMatrix(anglesFrom.yaw, anglesFrom.pitch, anglesFrom.roll)
+      };
+    }
+
+    function platformPointToWorld(pose, localPoint) {
+      return add(pose.position, transform(pose.rotation, subtract(localPoint, pose.reference)));
+    }
+
+    function rodPose(start, end) {
+      const vector = subtract(end, start);
+      const len = length(vector);
+      const axis = normalize(vector);
+      return {
+        start,
+        end,
+        center: scale(add(start, end), 0.5),
+        vector,
+        length: len,
+        axis,
+        yaw: Math.atan2(axis[1], axis[0]) * 180 / Math.PI,
+        pitch: Math.atan2(axis[2], Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1])) * 180 / Math.PI
+      };
+    }
+
+    function calculateIK(poseOverride = null, previousStrokes = null, shouldSync = true) {
+      if (shouldSync) syncConstraintsFromInputs();
+      const pose = poseOverride || targetPoseFromInputs();
+      const links = constraints.map((item) => {
+        const motorRotation = rotationMatrix(item.yaw, item.pitch, item.roll);
+        const targetJoint = platformPointToWorld(pose, item.attach);
+        const c = subtract(targetJoint, item.base);
+        const referenceStroke = previousStrokes && Number.isFinite(previousStrokes[item.id])
+          ? previousStrokes[item.id]
+          : item.currentStroke;
+        if (item.type === "fixed") {
+          const residual = length(c) - item.length;
+          const rod = rodPose(item.base, targetJoint);
+          return { ...item, rotation: motorRotation, targetJoint, residual, anchor: item.base, rod };
+        }
+        const v = transform(motorRotation, localAxis(item.axis));
+        if (item.type === "chainSlider") {
+          const lengths = parseChainLengths(item.chainLengths, item.length);
+          const reach = chainReach(lengths);
+          const along = dot(c, v);
+          const c2 = dot(c, c);
+          const h2 = Math.max(0, c2 - along * along);
+          let intervals = [];
+          if (h2 <= reach.max * reach.max) {
+            const outer = Math.sqrt(Math.max(0, reach.max * reach.max - h2));
+            intervals = [[along - outer, along + outer]];
+            if (reach.min > 0 && h2 < reach.min * reach.min) {
+              const inner = Math.sqrt(Math.max(0, reach.min * reach.min - h2));
+              intervals = [
+                [along - outer, along - inner],
+                [along + inner, along + outer]
+              ].filter(([lo, hi]) => lo <= hi);
+            }
+          }
+          const stroke = intervals.length ? clampToIntervals(referenceStroke, intervals) : Number.NaN;
+          const moveDelta = Number.isFinite(stroke) ? stroke - item.currentStroke : Number.NaN;
+          const stepDelta = Number.isFinite(stroke) ? stroke - referenceStroke : Number.NaN;
+          const sliderPoint = Number.isFinite(stroke) ? add(item.base, scale(v, stroke)) : item.base;
+          const distance = length(subtract(targetJoint, sliderPoint));
+          const residual = distance < reach.min ? reach.min - distance : distance > reach.max ? distance - reach.max : 0;
+          const rod = rodPose(sliderPoint, targetJoint);
+          return {
+            ...item,
+            rotation: motorRotation,
+            targetJoint,
+            c,
+            v,
+            chainLengthsArray: lengths,
+            reach,
+            h2,
+            feasibleIntervals: intervals,
+            stroke,
+            moveDelta,
+            stepDelta,
+            referenceStroke,
+            sliderPoint,
+            residual,
+            rod,
+            selectionReason: intervals.length ? `nearest feasible stroke to reference ${fmt(referenceStroke)}` : "unreachable: slider line is outside chain reach"
+          };
+        }
+        const along = dot(c, v);
+        const aCoeff = dot(v, v);
+        const bCoeff = -2 * dot(v, c);
+        const cCoeff = dot(c, c) - item.length * item.length;
+        const discriminant = bCoeff * bCoeff - 4 * aCoeff * cCoeff;
+        const root = discriminant >= 0 ? Math.sqrt(discriminant) : Number.NaN;
+        const minusStroke = Number.isFinite(root) ? (-bCoeff - root) / (2 * aCoeff) : Number.NaN;
+        const plusStroke = Number.isFinite(root) ? (-bCoeff + root) / (2 * aCoeff) : Number.NaN;
+        let stroke = Number.NaN;
+        let selectionReason = "";
+        if (item.branch === "plus") {
+          stroke = plusStroke;
+          selectionReason = "selected plus branch";
+        } else if (item.branch === "minus") {
+          stroke = minusStroke;
+          selectionReason = "selected minus branch";
+        } else if (item.branch === "nearest") {
+          const finiteCandidates = [minusStroke, plusStroke].filter((value) => Number.isFinite(value));
+          stroke = finiteCandidates.length
+            ? finiteCandidates.reduce((best, value) => Math.abs(value - referenceStroke) < Math.abs(best - referenceStroke) ? value : best)
+            : Number.NaN;
+          selectionReason = `nearest to reference stroke ${fmt(referenceStroke)}`;
+        } else {
+          const positiveCandidates = [minusStroke, plusStroke].filter((value) => Number.isFinite(value) && value >= 0);
+          stroke = positiveCandidates.length ? Math.min(...positiveCandidates) : minusStroke;
+          selectionReason = positiveCandidates.length ? "smallest non-negative root" : "no non-negative root; fallback to minus";
+        }
+        const moveDelta = Number.isFinite(stroke) ? stroke - item.currentStroke : Number.NaN;
+        const stepDelta = Number.isFinite(stroke) ? stroke - referenceStroke : Number.NaN;
+        const sliderPoint = Number.isFinite(stroke) ? add(item.base, scale(v, stroke)) : item.base;
+        const residual = Number.isFinite(stroke) ? length(subtract(targetJoint, sliderPoint)) - item.length : Number.NaN;
+        const rod = rodPose(sliderPoint, targetJoint);
+        return {
+          ...item,
+          rotation: motorRotation,
+          targetJoint,
+          c,
+          v,
+          along,
+          aCoeff,
+          bCoeff,
+          cCoeff,
+          stroke,
+          moveDelta,
+          stepDelta,
+          referenceStroke,
+          sliderPoint,
+          residual,
+          rod,
+          discriminant,
+          minusStroke,
+          plusStroke,
+          selectionReason
+        };
+      });
+      return { pose, links };
+    }
+
+    function calculateTrajectoryFromWaypoints(waypoints, stepsPerSegment) {
+      const steps = clamp(Math.round(stepsPerSegment) || 2, 2, 80);
+      const previous = {};
+      constraints.forEach((item) => {
+        previous[item.id] = item.currentStroke || 0;
+      });
+      const frames = [];
+      for (let segment = 0; segment < waypoints.length - 1; segment += 1) {
+        const start = waypoints[segment];
+        const end = waypoints[segment + 1];
+        for (let localIndex = 0; localIndex < steps; localIndex += 1) {
+          if (segment > 0 && localIndex === 0) continue;
+          const t = steps === 1 ? 1 : localIndex / (steps - 1);
+          const pose = interpolatePose(start, end, t);
+          const result = calculateIK(pose, previous, false);
+          const commands = {};
+          result.links.forEach((link) => {
+            if (link.type !== "fixed" && Number.isFinite(link.stroke)) {
+              commands[link.id] = {
+                stroke: link.stroke,
+                stepDelta: link.stepDelta,
+                residual: link.residual
+              };
+              previous[link.id] = link.stroke;
+            } else if (link.type !== "fixed") {
+              commands[link.id] = {
+                stroke: Number.NaN,
+                stepDelta: Number.NaN,
+                residual: link.residual
+              };
+            }
+          });
+          const globalT = (segment + t) / (waypoints.length - 1);
+          frames.push({ index: frames.length, segment, t: globalT, pose, result, commands });
+        }
+      }
+      return frames;
+    }
+
+    function calculateTrajectory() {
+      const start = currentPoseFromInputs();
+      const end = targetPoseFromInputs();
+      return calculateTrajectoryFromWaypoints([start, end], readNumber("trajectory-steps"));
+    }
+
+    function frameStatus(frame) {
+      if (frame.result.links.some((link) => link.type !== "fixed" && !Number.isFinite(link.stroke))) {
+        return { text: "unreachable", className: "status-bad", detail: "至少一个 slider/chain 在这一中间位姿无解" };
+      }
+      if (frame.result.links.some((link) => link.type !== "fixed" && Number.isFinite(link.stroke) && (link.stroke < link.strokeMin || link.stroke > link.strokeMax))) {
+        return { text: "stroke limit", className: "status-bad", detail: "至少一个 actuator stroke 超出设定 min/max" };
+      }
+      if (frame.result.links.some((link) => Math.abs(link.residual || 0) > 0.01)) {
+        return { text: "residual", className: "status-warn", detail: "至少一条 fixed 或 chain 约束有长度误差" };
+      }
+      return { text: "ok", className: "status-ok", detail: "这一中间位姿可达" };
+    }
+
+    function verificationForLink(link) {
+      if (link.type === "fixed") {
+        const distance = length(subtract(link.targetJoint, link.base));
+        const residual = distance - link.length;
+        return {
+          id: link.id,
+          type: "fixed",
+          q: link.targetJoint,
+          start: link.base,
+          distance,
+          target: fmt(link.length),
+          residual,
+          status: Math.abs(residual) <= 0.01 ? "ok" : "residual",
+          statusClass: Math.abs(residual) <= 0.01 ? "status-ok" : "status-warn"
+        };
+      }
+      if (!Number.isFinite(link.stroke)) {
+        return {
+          id: link.id,
+          type: link.type,
+          q: link.targetJoint,
+          start: link.base,
+          distance: Number.NaN,
+          target: link.type === "chainSlider" ? `[${fmt(link.reach.min)}, ${fmt(link.reach.max)}]` : fmt(link.length),
+          residual: Number.NaN,
+          status: "unreachable",
+          statusClass: "status-bad"
+        };
+      }
+      const distance = length(subtract(link.targetJoint, link.sliderPoint));
+      const strokeLimited = link.stroke < link.strokeMin || link.stroke > link.strokeMax;
+      if (link.type === "chainSlider") {
+        const residual = distance < link.reach.min ? link.reach.min - distance : distance > link.reach.max ? distance - link.reach.max : 0;
+        const ok = Math.abs(residual) <= 0.01 && !strokeLimited;
+        return {
+          id: link.id,
+          type: "chain",
+          q: link.targetJoint,
+          start: link.sliderPoint,
+          distance,
+          target: `[${fmt(link.reach.min)}, ${fmt(link.reach.max)}]`,
+          residual,
+          stroke: link.stroke,
+          strokeRange: `[${fmt(link.strokeMin)}, ${fmt(link.strokeMax)}]`,
+          status: ok ? "ok" : strokeLimited ? "stroke limit" : "residual",
+          statusClass: ok ? "status-ok" : strokeLimited ? "status-bad" : "status-warn"
+        };
+      }
+      const residual = distance - link.length;
+      const ok = Math.abs(residual) <= 0.01 && !strokeLimited;
+      return {
+        id: link.id,
+        type: "slider",
+        q: link.targetJoint,
+        start: link.sliderPoint,
+        distance,
+        target: fmt(link.length),
+        residual,
+        stroke: link.stroke,
+        strokeRange: `[${fmt(link.strokeMin)}, ${fmt(link.strokeMax)}]`,
+        status: ok ? "ok" : strokeLimited ? "stroke limit" : "residual",
+        statusClass: ok ? "status-ok" : strokeLimited ? "status-bad" : "status-warn"
+      };
+    }
+
+    function failedStatuses(frames) {
+      return frames
+        .map((frame, index) => ({ ...frameStatus(frame), step: index + 1 }))
+        .filter((status) => status.text !== "ok");
+    }
+
+    function calculateLiftSearch() {
+      const start = currentPoseFromInputs();
+      const end = targetPoseFromInputs();
+      const maxLift = Math.max(0, readNumber("lift-max"));
+      const liftStep = Math.max(0.1, readNumber("lift-step"));
+      const steps = readNumber("trajectory-steps");
+      const topZ = Math.max(start.position[2], end.position[2]);
+      const trials = [];
+      const count = Math.floor(maxLift / liftStep + 1e-9);
+      for (let index = 0; index <= count; index += 1) {
+        const h = Number((index * liftStep).toFixed(6));
+        const highZ = topZ + h;
+        const w1 = poseAt([start.position[0], start.position[1], highZ], start, start.reference);
+        const w2 = poseAt([end.position[0], end.position[1], highZ], end, end.reference);
+        const frames = calculateTrajectoryFromWaypoints([start, w1, w2, end], steps);
+        const failed = failedStatuses(frames);
+        const trial = { h, highZ, w1, w2, frames, failed, passed: failed.length === 0 };
+        trials.push(trial);
+        if (trial.passed) return { found: true, trial, trials };
+      }
+      return { found: false, trial: trials[trials.length - 1] || null, trials };
+    }
+
+    function renderIK(result) {
+      const unit = "mm";
+      el("ik-output").innerHTML = result.links.map((link) => {
+        if (link.type === "fixed") {
+          return `
+            <div class="step">
+              <span class="step-index">${link.id}</span>
+              <div>
+                <strong>Fixed anchor ${link.id}: length error residual = ${fmt(link.residual)} ${unit}</strong>
+                <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}</div>
+                <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+              </div>
+            </div>
+          `;
+        }
+        if (link.type === "chainSlider") {
+          const intervals = link.feasibleIntervals.length
+            ? link.feasibleIntervals.map(([lo, hi]) => `[${fmt(lo)}, ${fmt(hi)}]`).join(" or ")
+            : "none";
+          return `
+            <div class="step">
+              <span class="step-index">${link.id}</span>
+              <div>
+                <strong>Multi-link ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; move Δs = ${fmt(link.moveDelta)} ${unit}</strong>
+                <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
+                <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
+                <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+              </div>
+            </div>
+          `;
+        }
+        return `
+          <div class="step">
+            <span class="step-index">${link.id}</span>
+            <div>
+              <strong>Slider ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; move Δs = ${fmt(link.moveDelta)} ${unit}</strong>
+              <div class="mini">two roots: minus = ${fmt(link.minusStroke)} ${unit}, plus = ${fmt(link.plusStroke)} ${unit}</div>
+              <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}; length error residual = ${fmt(link.residual)} ${unit}</div>
+              <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+            </div>
+          </div>
+        `;
+      }).join("");
+      el("out-x").textContent = `${fmt(result.pose.position[0])} ${unit}`;
+      el("out-y").textContent = `${fmt(result.pose.position[1])} ${unit}`;
+      el("out-z").textContent = `${fmt(result.pose.position[2])} ${unit}`;
+      renderNumericDerivation(result);
+    }
+
+    function renderTrajectory(frames, liftSearch) {
+      const movingLinks = constraints.filter((item) => item.type !== "fixed");
+      if (!movingLinks.length) {
+        el("trajectory-output").innerHTML = `<div class="mini">当前没有 slider 或 multi-link slider，所以没有 actuator command。</div>`;
+        return;
+      }
+      const header = movingLinks.map((item) => `<th>s${item.id} / Δprev</th>`).join("");
+      const statuses = frames.map(frameStatus);
+      const failed = failedStatuses(frames);
+      const summary = failed.length
+        ? `<strong><span class="status-badge status-bad">failed</span> 这条路径没有通过检查。</strong><div class="mini">失败 step: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}。先看这些行的 status，再看对应 actuator 是否显示 unreachable 或 residual。</div>`
+        : `<strong><span class="status-badge status-ok">passed</span> 这条路径目前通过几何可达性检查。</strong><div class="mini">所有 middle positions 都能算出 actuator stroke，且 residual 在 0.01 mm 内。</div>`;
+      const liftSummary = liftSearch.found
+        ? `<strong><span class="status-badge status-ok">lift found</span> 最小可行抬高量 h = ${fmt(liftSearch.trial.h)} mm。</strong>
+           <div class="mini">测试路径：Current -> W1 -> W2 -> Target，其中 W1 = ${vec(liftSearch.trial.w1.position)}，W2 = ${vec(liftSearch.trial.w2.position)}。搜索步长是 ${fmt(readNumber("lift-step"))} mm，所以真实最小值可能在这个步长以内。</div>`
+        : `<strong><span class="status-badge status-bad">no lift</span> 在 Max lift = ${fmt(readNumber("lift-max"))} mm 内没有找到可行抬高路径。</strong>
+           <div class="mini">这通常说明简单“先抬高再平移再下降”的路径不够，或者 fixed/chain 约束本身让这些中间位姿不兼容。</div>`;
+      const rows = frames.map((frame) => {
+        const commandCells = movingLinks.map((item) => {
+          const command = frame.commands[item.id];
+          if (!command || !Number.isFinite(command.stroke)) return `<td>unreachable</td>`;
+          return `<td>${fmt(command.stroke)} / ${fmt(command.stepDelta)}</td>`;
+        }).join("");
+        const status = frameStatus(frame);
+        const activeClass = el("anim-path") && el("anim-path").value === "direct" && frame.index === animationState.frameIndex ? " class=\"active-frame\"" : "";
+        return `
+          <tr${activeClass}>
+            <td>${frame.index + 1}</td>
+            <td>${fmt(frame.t)}</td>
+            <td>${vec(frame.pose.position)}</td>
+            <td>${fmt(frame.pose.yaw)}, ${fmt(frame.pose.pitch)}, ${fmt(frame.pose.roll)}</td>
+            ${commandCells}
+            <td><span class="status-badge ${status.className}" title="${status.detail}">${status.text}</span></td>
+          </tr>
+        `;
+      }).join("");
+      el("trajectory-output").innerHTML = `
+        <div class="check-summary">
+          ${summary}
+          <div class="mini">怎么用：先填左侧 <code>Current</code>，再填上方 <code>Target</code>，然后看这里是否 <code>PASSED</code>。如果失败，把 <code>Steps</code> 加大，例如 20 或 50，可以更细地找出中间哪一步卡住。</div>
+        </div>
+        <div class="check-summary">
+          ${liftSummary}
+          <div class="mini">自动抬高搜索从 <code>h=0</code> 开始，每次增加 <code>Lift step</code>，一直试到 <code>Max lift</code>。它检查的是三段 waypoint 路径，不改变下面表格显示的直线路径。</div>
+        </div>
+        <div class="mini" style="margin-bottom:10px">每一行是一个 middle sample pose。表里的 <code>s</code> 是该步 actuator 的绝对 stroke，<code>Δprev</code> 是相对上一 middle position 需要移动的量；实际控制时这些 actuator 在同一个时间步内同步移动。</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>step</th>
+                <th>t</th>
+                <th>sample p</th>
+                <th>yaw,pitch,roll</th>
+                ${header}
+                <th>status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderVerification(frame) {
+      if (!frame) {
+        el("verification-output").innerHTML = `<div class="mini">No frame selected.</div>`;
+        return;
+      }
+      const rows = frame.result.links.map((link) => {
+        const item = verificationForLink(link);
+        return `
+          <tr>
+            <td>${item.id}</td>
+            <td>${item.type}</td>
+            <td>${vec(item.q)}</td>
+            <td>${vec(item.start)}</td>
+            <td>${Number.isFinite(item.distance) ? fmt(item.distance) : "n/a"}</td>
+            <td>${item.target}</td>
+            <td>${Number.isFinite(item.residual) ? fmt(item.residual) : "n/a"}</td>
+            <td>${Number.isFinite(item.stroke) ? `${fmt(item.stroke)} in ${item.strokeRange}` : "n/a"}</td>
+            <td><span class="status-badge ${item.statusClass}">${item.status}</span></td>
+          </tr>
+        `;
+      }).join("");
+      const residuals = frame.result.links.map((link) => Math.abs(verificationForLink(link).residual || 0));
+      const maxResidual = residuals.length ? Math.max(...residuals) : 0;
+      const status = frameStatus(frame);
+      el("verification-output").innerHTML = `
+        <div class="check-summary">
+          <strong><span class="status-badge ${status.className}">${status.text}</span> 当前动画帧反代检查</strong>
+          <div class="mini">Frame ${frame.index + 1}: sample p = ${vec(frame.pose.position)}, yaw/pitch/roll = ${fmt(frame.pose.yaw)}, ${fmt(frame.pose.pitch)}, ${fmt(frame.pose.roll)}。Max |residual| = ${fmt(maxResidual)} mm。</div>
+          <div class="mini">验证规则：用程序算出的 <code>s</code> 反代 <code>m=b+s v</code>，再检查 <code>distance=||q-m||</code> 是否等于杆长或落在 chain reach 区间内。</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>link</th>
+                <th>type</th>
+                <th>q on sample</th>
+                <th>start / m</th>
+                <th>distance</th>
+                <th>target</th>
+                <th>residual</th>
+                <th>stroke check</th>
+                <th>status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function animationFrames(directFrames, liftSearch) {
+      if (el("anim-path") && el("anim-path").value === "lift") {
+        return liftSearch.trial ? liftSearch.trial.frames : directFrames;
+      }
+      return directFrames;
+    }
+
+    function updateAnimationControls(frames) {
+      const maxIndex = Math.max(0, frames.length - 1);
+      animationState.frameIndex = clamp(animationState.frameIndex, 0, maxIndex);
+      const slider = el("anim-frame");
+      if (slider) {
+        slider.max = String(maxIndex);
+        slider.value = String(animationState.frameIndex);
+      }
+      const frame = frames[animationState.frameIndex];
+      const status = frame ? frameStatus(frame).text : "ok";
+      const pathName = el("anim-path") && el("anim-path").value === "lift" ? "lift path" : "direct path";
+      el("anim-readout").textContent = frame
+        ? `${pathName}: frame ${animationState.frameIndex + 1} / ${frames.length}, t=${fmt(frame.t)}, sample p=${vec(frame.pose.position)}, status=${status}`
+        : "Frame 1 / 1";
+      el("anim-play").textContent = animationState.playing ? "Pause" : "Play";
+    }
+
+    function animationTick(time) {
+      if (!animationState.playing) return;
+      const speed = clamp(readNumber("anim-speed") || 1, 0.2, 5);
+      const interval = 650 / speed;
+      if (!animationState.lastTime) animationState.lastTime = time;
+      if (time - animationState.lastTime >= interval) {
+        const directFrames = calculateTrajectory();
+        const liftSearch = calculateLiftSearch();
+        const frames = animationFrames(directFrames, liftSearch);
+        animationState.frameIndex = frames.length ? (animationState.frameIndex + 1) % frames.length : 0;
+        animationState.lastTime = time;
+        draw();
+      }
+      animationState.rafId = requestAnimationFrame(animationTick);
+    }
+
+    function startAnimation() {
+      if (animationState.playing) return;
+      animationState.playing = true;
+      animationState.lastTime = 0;
+      el("anim-play").textContent = "Pause";
+      animationState.rafId = requestAnimationFrame(animationTick);
+    }
+
+    function stopAnimation() {
+      animationState.playing = false;
+      el("anim-play").textContent = "Play";
+      if (animationState.rafId) cancelAnimationFrame(animationState.rafId);
+      animationState.rafId = null;
+    }
+
+    function vec(value) {
+      return `[${value.map((item) => fmt(item)).join(", ")}]`;
+    }
+
+    function matrix(rows) {
+      return rows.map((row) => `[ ${row.map((item) => fmt(item).padStart(8, " ")).join(" ")} ]`).join("\n");
+    }
+
+    function homogeneousT(pose) {
+      return [
+        [pose.rotation[0][0], pose.rotation[0][1], pose.rotation[0][2], pose.position[0]],
+        [pose.rotation[1][0], pose.rotation[1][1], pose.rotation[1][2], pose.position[1]],
+        [pose.rotation[2][0], pose.rotation[2][1], pose.rotation[2][2], pose.position[2]],
+        [0, 0, 0, 1]
+      ];
+    }
+
+    function renderNumericDerivation(result) {
+      if (!result.links.length) {
+        el("numeric-derivation").innerHTML = "<strong>5. 当前数值代入</strong><p>还没有 link。</p>";
+        return;
+      }
+      const transformText = result.links.map((link) => {
+        const alpha = subtract(link.attach, result.pose.reference);
+        const alphaH = [alpha[0], alpha[1], alpha[2], 1];
+        const qH = [link.targetJoint[0], link.targetJoint[1], link.targetJoint[2], 1];
+        return `Link ${link.id}
+a_${link.id} - r = ${vec(alpha)}
+[q_${link.id}; 1] = T [a_${link.id}-r; 1]
+${matrix(homogeneousT(result.pose))}
+*
+${matrix(alphaH.map((value) => [value]))}
+=
+${matrix(qH.map((value) => [value]))}`;
+      }).join("\n\n");
+
+      const linkText = result.links.map((link) => {
+        if (link.type === "fixed") {
+          return `<div class="formula-card">
+            <strong>Link ${link.id}: fixed anchor 数值计算</strong>
+            <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
+            <p><code>f_${link.id} = ${vec(link.base)}</code>：固定端/anchor 的全局位置，<code>L_${link.id} = ${fmt(link.length)}</code> 是杆长。</p>
+            <p><code>e_${link.id} = ||q_${link.id} - f_${link.id}|| - L_${link.id} = ${fmt(link.residual)}</code>：长度误差 residual。</p>
+            <p><code>rod center = ${vec(link.rod.center)}</code>：连杆中心点。</p>
+            <p><code>rod axis = ${vec(link.rod.axis)}</code>：从固定端指向 sample 连接点的单位方向；<code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>。</p>
+          </div>`;
+        }
+        if (link.type === "chainSlider") {
+          const intervals = link.feasibleIntervals.length
+            ? link.feasibleIntervals.map(([lo, hi]) => `[${fmt(lo)}, ${fmt(hi)}]`).join(" or ")
+            : "none";
+          return `<div class="formula-card">
+            <strong>Link ${link.id}: multi-link chain 数值计算</strong>
+            <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
+            <p><code>b_${link.id} = ${vec(link.base)}</code>：slider base 点，<code>v_${link.id} = ${vec(link.v)}</code> 是 slider 正方向单位向量。</p>
+            <p>链条杆长：<code>[${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}]</code></p>
+            <p><code>Rmin = ${fmt(link.reach.min)}</code>, <code>Rmax = ${fmt(link.reach.max)}</code>。slider 到 sample 连接点的距离必须在这个范围内。</p>
+            <p><code>c_${link.id} = q_${link.id} - b_${link.id} = ${vec(link.c)}</code></p>
+            <p><code>along = v^T c</code>，<code>h^2 = ||c||^2 - along^2 = ${fmt(link.h2)}</code></p>
+            <p>可行 stroke 区间：<code>${intervals}</code></p>
+            <p>选择规则：<code>${link.selectionReason}</code></p>
+            <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.stroke)} - ${fmt(link.currentStroke)} = ${fmt(link.moveDelta)}</code></p>
+            <p>注意：多连杆链的中间折叠姿态不唯一，除非再指定每个 hinge 的旋转平面/转轴。这里输出的是等效链方向。</p>
+          </div>`;
+        }
+        return `<div class="formula-card">
+          <strong>Link ${link.id}: slider 数值计算</strong>
+          <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
+          <p><code>b_${link.id} = ${vec(link.base)}</code>：slider base 点，<code>L_${link.id} = ${fmt(link.length)}</code> 是杆长，<code>v_${link.id} = ${vec(link.v)}</code> 是 slider 正方向单位向量。</p>
+          <p><code>c_${link.id} = q_${link.id} - b_${link.id} = ${vec(link.c)}</code>：从 slider base 指向 sample 连接点的向量。</p>
+          <pre class="math-block">A s^2 + B s + C = 0
+A = v^T v       = ${fmt(link.aCoeff)}
+B = -2 v^T c    = ${fmt(link.bCoeff)}
+C = c^T c - L^2 = ${fmt(link.cCoeff)}
+D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
+          <p><code>s^- = (-B - sqrt(D))/(2A) = ${fmt(link.minusStroke)}</code></p>
+          <p><code>s^+ = (-B + sqrt(D))/(2A) = ${fmt(link.plusStroke)}</code></p>
+          <p>选择规则：<code>${link.selectionReason}</code></p>
+          <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.stroke)} - ${fmt(link.currentStroke)} = ${fmt(link.moveDelta)}</code></p>
+          <p><code>rod center = ${vec(link.rod.center)}</code>：连杆中心点。</p>
+          <p><code>rod axis = ${vec(link.rod.axis)}</code>：从 slider 端点指向 sample 连接点的单位方向；<code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>。</p>
+        </div>`;
+      }).join("");
+
+      el("numeric-derivation").innerHTML = `
+        <strong>5. 当前数值代入：完整 matrix 和所有 link</strong>
+        <p>平台齐次变换矩阵 <code>T=[R p; 0 1]</code>：</p>
+        <pre class="math-block">${matrix(homogeneousT(result.pose))}</pre>
+        <p>每个 sample 连接点的全局位置由下面的矩阵乘法得到：</p>
+        <pre class="math-block">${transformText}</pre>
+        <div class="formula-grid">${linkText}</div>
+      `;
+    }
+
+    function rotateForView(point) {
+      const x = point[0], y = point[1], z = point[2];
+      const cy = Math.cos(viewState.yaw), sy = Math.sin(viewState.yaw);
+      const cp = Math.cos(viewState.pitch), sp = Math.sin(viewState.pitch);
+      const x1 = cy * x - sy * y;
+      const y1 = sy * x + cy * y;
+      return [x1, cp * y1 - sp * z, sp * y1 + cp * z];
+    }
+
+    function project(point, width, height, zoom) {
+      const rotated = rotateForView(point);
+      return [width / 2 + rotated[0] * zoom, height / 2 - rotated[2] * zoom];
+    }
+
+    function drawArrow(ctx, from, to, color, dashed = false) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color;
+      ctx.lineWidth = dashed ? 1.5 : 3;
+      ctx.setLineDash(dashed ? [7, 7] : []);
+      ctx.beginPath();
+      ctx.moveTo(from[0], from[1]);
+      ctx.lineTo(to[0], to[1]);
+      ctx.stroke();
+      const angle = Math.atan2(to[1] - from[1], to[0] - from[0]);
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(to[0], to[1]);
+      ctx.lineTo(to[0] - 10 * Math.cos(angle - 0.45), to[1] - 10 * Math.sin(angle - 0.45));
+      ctx.lineTo(to[0] - 10 * Math.cos(angle + 0.45), to[1] - 10 * Math.sin(angle + 0.45));
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSegment(ctx, from, to, color, dashed = false) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.setLineDash(dashed ? [8, 6] : []);
+      ctx.beginPath();
+      ctx.moveTo(from[0], from[1]);
+      ctx.lineTo(to[0], to[1]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawLabel(ctx, text, point, color, dx = 8, dy = -8) {
+      ctx.save();
+      ctx.font = "700 13px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255, 252, 243, 0.92)";
+      ctx.fillStyle = color;
+      ctx.strokeText(text, point[0] + dx, point[1] + dy);
+      ctx.fillText(text, point[0] + dx, point[1] + dy);
+      ctx.restore();
+    }
+
+    function drawSample(ctx, result, rect, zoom) {
+      const sx = readNumber("sample-x") / 2;
+      const sy = readNumber("sample-y") / 2;
+      const sz = readNumber("sample-z") / 2;
+      const localCorners = [
+        [-sx, -sy, -sz], [sx, -sy, -sz], [sx, sy, -sz], [-sx, sy, -sz],
+        [-sx, -sy, sz], [sx, -sy, sz], [sx, sy, sz], [-sx, sy, sz]
+      ];
+      const points = localCorners.map((point) => project(platformPointToWorld(result.pose, point), rect.width, rect.height, zoom));
+      const faces = [
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [1, 2, 6, 5],
+        [2, 3, 7, 6],
+        [3, 0, 4, 7]
+      ];
+      const edges = [
+        [0, 1], [1, 2], [2, 3], [3, 0],
+        [4, 5], [5, 6], [6, 7], [7, 4],
+        [0, 4], [1, 5], [2, 6], [3, 7]
+      ];
+      ctx.save();
+      ctx.fillStyle = "rgba(23, 23, 20, 0.08)";
+      ctx.strokeStyle = "#171714";
+      ctx.lineWidth = 2;
+      faces.forEach((face) => {
+        ctx.beginPath();
+        ctx.moveTo(points[face[0]][0], points[face[0]][1]);
+        face.slice(1).forEach((index) => ctx.lineTo(points[index][0], points[index][1]));
+        ctx.closePath();
+        ctx.fill();
+      });
+      ctx.lineWidth = 3;
+      edges.forEach(([a, b]) => {
+        ctx.beginPath();
+        ctx.moveTo(points[a][0], points[a][1]);
+        ctx.lineTo(points[b][0], points[b][1]);
+        ctx.stroke();
+      });
+      ctx.restore();
+    }
+
+    function draw() {
+      const directFrames = calculateTrajectory();
+      const liftSearch = calculateLiftSearch();
+      const frames = animationFrames(directFrames, liftSearch);
+      updateAnimationControls(frames);
+      const result = frames[animationState.frameIndex] ? frames[animationState.frameIndex].result : calculateIK();
+      renderIK(result);
+      renderTrajectory(directFrames, liftSearch);
+      renderVerification(frames[animationState.frameIndex]);
+      const canvas = el("view");
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, rect.width, rect.height);
+
+      const zoom = viewState.zoom;
+      const origin = project([0, 0, 0], rect.width, rect.height, zoom);
+      const globalX = project([10, 0, 0], rect.width, rect.height, zoom);
+      const globalY = project([0, 10, 0], rect.width, rect.height, zoom);
+      const globalZ = project([0, 0, 10], rect.width, rect.height, zoom);
+      drawArrow(ctx, origin, globalX, "#111", true);
+      drawArrow(ctx, origin, globalY, "#555", true);
+      drawArrow(ctx, origin, globalZ, "#777", true);
+      drawLabel(ctx, "X", globalX, "#111", 10, 0);
+      drawLabel(ctx, "Y", globalY, "#555", -22, 0);
+      drawLabel(ctx, "Z", globalZ, "#777", 10, -2);
+
+      drawSample(ctx, result, rect, zoom);
+
+      result.links.forEach((link) => {
+        const targetPoint = project(link.targetJoint, rect.width, rect.height, zoom);
+        const basePoint = project(link.base, rect.width, rect.height, zoom);
+        if (link.type === "fixed") {
+          drawSegment(ctx, basePoint, targetPoint, link.color);
+          drawLabel(ctx, `F${link.id}`, basePoint, link.color, 8, -8);
+          drawLabel(ctx, `L${link.id}`, [(basePoint[0] + targetPoint[0]) / 2, (basePoint[1] + targetPoint[1]) / 2], link.color, 6, -6);
+        } else if (link.type === "chainSlider") {
+          const sliderPoint = project(link.sliderPoint, rect.width, rect.height, zoom);
+          drawArrow(ctx, basePoint, sliderPoint, link.color);
+          drawSegment(ctx, sliderPoint, targetPoint, link.color, true);
+          drawLabel(ctx, `s${link.id}`, [(basePoint[0] + sliderPoint[0]) / 2, (basePoint[1] + sliderPoint[1]) / 2], link.color, 6, -6);
+          drawLabel(ctx, `chain${link.id}`, [(sliderPoint[0] + targetPoint[0]) / 2, (sliderPoint[1] + targetPoint[1]) / 2], link.color, 6, -6);
+        } else {
+          const sliderPoint = project(link.sliderPoint, rect.width, rect.height, zoom);
+          drawArrow(ctx, basePoint, sliderPoint, link.color);
+          drawSegment(ctx, sliderPoint, targetPoint, link.color);
+          drawLabel(ctx, `s${link.id}`, [(basePoint[0] + sliderPoint[0]) / 2, (basePoint[1] + sliderPoint[1]) / 2], link.color, 6, -6);
+          drawLabel(ctx, `L${link.id}`, [(sliderPoint[0] + targetPoint[0]) / 2, (sliderPoint[1] + targetPoint[1]) / 2], link.color, 6, -6);
+        }
+
+        ctx.fillStyle = link.color;
+        ctx.beginPath();
+        ctx.arc(targetPoint[0], targetPoint[1], 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(basePoint[0], basePoint[1], 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function addConstraint() {
+      syncConstraintsFromInputs();
+      const index = constraints.length;
+      const id = String.fromCharCode(65 + index);
+      constraints.push({
+        id,
+        type: "slider",
+        color: colors[index % colors.length],
+        attach: [0, 0, 0],
+        base: [index * 2 - 4, 6, 0],
+        yaw: 0,
+        pitch: 0,
+        roll: 0,
+        axis: "x",
+        length: 3,
+        chainLengths: "1.5, 1.5",
+        currentStroke: 0,
+        strokeMin: -20,
+        strokeMax: 20,
+        branch: "nearest"
+      });
+      renderConstraints();
+      draw();
+    }
+
+    function setInputValue(id, value) {
+      el(id).value = value;
+    }
+
+    function loadExampleMechanism() {
+      setInputValue("target-x", 0);
+      setInputValue("target-y", 0);
+      setInputValue("target-z", 2);
+      setInputValue("target-yaw", 0);
+      setInputValue("target-pitch", 0);
+      setInputValue("target-roll", 0);
+      setInputValue("current-x", 0);
+      setInputValue("current-y", 0);
+      setInputValue("current-z", 2);
+      setInputValue("current-yaw", 0);
+      setInputValue("current-pitch", 0);
+      setInputValue("current-roll", 0);
+      setInputValue("sample-x", 7.2);
+      setInputValue("sample-y", 5.4);
+      setInputValue("sample-z", 0.4);
+      setInputValue("ref-x", 0);
+      setInputValue("ref-y", 0);
+      setInputValue("ref-z", 0);
+
+      constraints = [
+        {
+          id: "A",
+          type: "chainSlider",
+          color: colors[0],
+          attach: [-3.6, 2.2, 0],
+          base: [-9.5, 3.4, 0.2],
+          yaw: 4,
+          pitch: 0,
+          roll: 0,
+          axis: "x",
+          length: 3.6,
+          chainLengths: "1.4, 1.2, 1.0",
+          currentStroke: 10,
+          strokeMin: -20,
+          strokeMax: 25,
+          branch: "nearest"
+        },
+        {
+          id: "B",
+          type: "chainSlider",
+          color: colors[1],
+          attach: [-3.6, 0.2, 0],
+          base: [-9.2, 1.2, 0.1],
+          yaw: 4,
+          pitch: 0,
+          roll: 0,
+          axis: "x",
+          length: 3.4,
+          chainLengths: "1.7, 1.7",
+          currentStroke: 10,
+          strokeMin: -20,
+          strokeMax: 25,
+          branch: "nearest"
+        },
+        {
+          id: "C",
+          type: "fixed",
+          color: colors[2],
+          attach: [-3.6, -2.4, 0],
+          base: [-4.5, -6.5, -0.2],
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          axis: "x",
+          length: 4.2,
+          branch: "minus"
+        },
+        {
+          id: "D",
+          type: "fixed",
+          color: colors[3],
+          attach: [3.6, -2.4, 0],
+          base: [5.8, -6.2, -0.2],
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          axis: "x",
+          length: 4.4,
+          branch: "minus"
+        },
+        {
+          id: "E",
+          type: "fixed",
+          color: colors[4],
+          attach: [3.6, 2.4, 0],
+          base: [7.2, 0.2, 0.1],
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          axis: "x",
+          length: 4.1,
+          branch: "minus"
+        }
+      ];
+      viewState.yaw = -0.15;
+      viewState.pitch = 0.95;
+      viewState.zoom = 22;
+      renderConstraints();
+      draw();
+    }
+
+    renderConstraints();
+    document.addEventListener("input", (event) => {
+      if (event.target.id && event.target.id.endsWith("-type")) {
+        syncConstraintsFromInputs();
+        renderConstraints();
+      }
+      if (event.target.id === "anim-frame") {
+        animationState.frameIndex = Number.parseInt(event.target.value, 10) || 0;
+        stopAnimation();
+      } else if (event.target.id === "anim-path") {
+        stopAnimation();
+        animationState.frameIndex = 0;
+      } else if (!event.target.id || !event.target.id.startsWith("anim-")) {
+        animationState.frameIndex = 0;
+      }
+      draw();
+    });
+    document.addEventListener("click", (event) => {
+      if (event.target.id === "add-constraint") addConstraint();
+      if (event.target.id === "load-example") loadExampleMechanism();
+      if (event.target.id === "anim-play") {
+        if (animationState.playing) {
+          stopAnimation();
+        } else {
+          startAnimation();
+        }
+      }
+      if (event.target.id === "anim-reset") {
+        stopAnimation();
+        animationState.frameIndex = 0;
+        draw();
+      }
+      if (event.target.dataset.remove) {
+        syncConstraintsFromInputs();
+        constraints = constraints.filter((item) => item.id !== event.target.dataset.remove);
+        renderConstraints();
+        animationState.frameIndex = 0;
+        draw();
+      }
+    });
+    window.addEventListener("resize", draw);
+
+    const canvas = el("view");
+    canvas.addEventListener("pointerdown", (event) => {
+      viewState.dragging = true;
+      viewState.lastX = event.clientX;
+      viewState.lastY = event.clientY;
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!viewState.dragging) return;
+      const dx = event.clientX - viewState.lastX;
+      const dy = event.clientY - viewState.lastY;
+      viewState.lastX = event.clientX;
+      viewState.lastY = event.clientY;
+      viewState.yaw += dx * 0.01;
+      viewState.pitch = clamp(viewState.pitch + dy * 0.01, -1.35, 1.35);
+      draw();
+    });
+    canvas.addEventListener("pointerup", (event) => {
+      viewState.dragging = false;
+      canvas.releasePointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointercancel", () => {
+      viewState.dragging = false;
+    });
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      viewState.zoom = clamp(viewState.zoom * (event.deltaY < 0 ? 1.08 : 0.92), 4, 80);
+      draw();
+    }, { passive: false });
+    draw();
+  </script>
+</body>
+</html>
