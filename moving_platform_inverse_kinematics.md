@@ -758,7 +758,49 @@ s_i = v_i^T c_i ± sqrt( (v_i^T c_i)^2 - (c_i^T c_i - L_i^2) )
 
 This gives the analytical inverse kinematics result: the required slider stroke for each motor.
 
-## 7. Final Formula for a Full XYZ Motor
+## 7. Intermediate Coupler Formula
+
+If multiple rods connect to the same motor-side intermediate rigid body, those rods share one actuator stroke and must be solved together.
+
+Let `g` be the coupler group:
+
+```text
+p_i(s_g) = b_g + s_g v_g + R_g d_i
+```
+
+where:
+
+```text
+b_g = coupler base point
+v_g = coupler slider direction
+s_g = shared coupler stroke
+d_i = local attachment offset on the coupler body
+R_g = coupler orientation
+```
+
+Each rod gives one residual:
+
+```text
+e_i(s_g) = ||q_i - p_i(s_g)|| - L_i
+```
+
+Stack all rods attached to the same coupler:
+
+```text
+F(s_g) = [e_1, e_2, ..., e_n]^T
+J(s_g) = [de_1/ds_g, de_2/ds_g, ..., de_n/ds_g]^T
+```
+
+The shared stroke is solved by the scalar Gauss-Newton normal equation:
+
+```text
+(J^T J) Δs = -J^T F
+s_g <- s_g + Δs
+```
+
+This is the matrix form needed when several rods are coupled by the same intermediate body.
+
+## 8. Final Formula for a Full XYZ Motor
 
 For each motor `i = 1, 2, 3`:
 
@@ -778,7 +820,7 @@ u_i = R_i^T( p + R(a_i - r) - b_i )
 
 where `u_i = [u_ix, u_iy, u_iz]^T` is the required motor command in motor `i`'s local XYZ coordinate system.
 
-## 8. If a Motor Only Moves Along One Axis Without a Rod
+## 9. If a Motor Only Moves Along One Axis Without a Rod
 
 If a real actuator only moves along one local axis, for example local X, then it cannot generally realize an arbitrary 3D displacement.
 
@@ -802,7 +844,7 @@ epsilon_i = u_i - s_i e
 
 If `||epsilon_i||` is not close to zero, the requested platform pose is not reachable by that single-axis actuator model.
 
-## 9. Why This Solves the Moving-Platform Problem
+## 10. Why This Solves the Moving-Platform Problem
 
 The goal is an analytical inverse kinematics solution for a moving platform. The analytical solution comes from these facts:
 
@@ -824,7 +866,7 @@ desired platform pose -> target attachment points -> slider stroke from a quadra
 
 No MATLAB, Mathematica, or numerical optimizer is required for this simplified analytical model. Those tools are useful for checking algebra, simulating a more detailed CAD mechanism, or handling extra constraints, but the core inverse kinematics can be written directly.
 
-## 10. What the Web GUI Does
+## 11. What the Web GUI Does
 
 The GUI implements both formulas.
 

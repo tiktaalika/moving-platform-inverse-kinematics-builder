@@ -35,6 +35,7 @@ q_i = p + R(a_i - r)
 
 - `1D slider`：用二次方程解析求 actuator stroke。
 - `multi-link to slider`：用 chain reach 求可行 stroke 区间。
+- `intermediate coupler slider`：多根杆共享同一个 motor-side 中间刚体连接块 stroke，用 residual/Jacobian matrix 一起求解。
 - `fixed anchor`：不输出 motor command，只检查 residual。
 
 ## 路径检查

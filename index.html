@@ -520,7 +520,7 @@
             <button id="add-constraint" type="button">Add link</button>
           </div>
         </div>
-        <div class="mini">每条 link 都从 sample 上的局部连接点 <code>a_i</code> 出发，另一端可以是 slider 或固定 anchor。截图例子可近似加载成：右侧 sample、左侧 slider 支撑、底部/侧边 fixed anchors。</div>
+        <div class="mini">每条 link 都从 sample 上的局部连接点 <code>a_i</code> 出发，另一端可以是 slider、fixed anchor，或一个中间刚体 coupler 上的铰点。Coupler 适合表示图里那种黄色中间连接块：多根杆共享同一个 motor-side 运动。</div>
       </section>
 
       <section id="constraints"></section>
@@ -555,6 +555,7 @@
           <span class="pill">s: slider stroke</span>
           <span class="pill">L: rod/link</span>
           <span class="pill">chain: multi-link reach</span>
+          <span class="pill">K: coupler</span>
           <span class="pill">F: fixed anchor</span>
           <span class="pill">drag: rotate</span>
           <span class="pill">wheel: zoom</span>
@@ -592,6 +593,8 @@
           <p><code>s_i</code>：slider 的目标绝对位置/stroke，不是移动量。</p>
           <p><code>Δs</code>：slider 需要移动的量，<code>Δs = s_target - s_current</code>。</p>
           <p><code>f_i</code>：fixed anchor 的全局坐标，也就是固定端的位置。</p>
+          <p><code>K_g</code>：第 g 个 intermediate coupler / 中间刚体连接块。</p>
+          <p><code>d_i</code>：第 i 条杆接在 coupler 上的局部偏移点，使用 coupler 局部坐标。</p>
           <p><code>L_i</code>：第 i 条连杆的长度；如果是多连杆链，则是 <code>L_i1,L_i2,...</code>。</p>
           <p><code>residual / e_i</code>：长度误差，等于“实际算出来的距离 - 设定杆长”。越接近 0 越满足约束。</p>
           <p><code>rod axis</code>：连杆从起点指向 sample 连接点的单位方向向量，不是 slider 轴。</p>
@@ -643,7 +646,18 @@
             <p>这会给出一个可行 stroke 区间；中间每根杆的折叠姿态若没有 hinge plane/axis，则不唯一。</p>
           </div>
           <div class="formula-card">
-            <strong>7. 轨迹和同步控制</strong>
+            <strong>7. Intermediate coupler</strong>
+            <p>如果多根杆接到同一个中间刚体连接块 <code>K_g</code>，它们共享同一个 stroke <code>s_g</code>，不能再完全逐条独立求解。</p>
+            <p><code>p_i(s_g)=b_g+s_g v_g+d_i</code></p>
+            <p><code>e_i(s_g)=||q_i-p_i(s_g)||-L_i</code></p>
+            <p>把同一个 group 的 residual 叠起来：</p>
+            <p><code>F(s_g)=[e_1,e_2,...]^T</code></p>
+            <p><code>J_i=de_i/ds_g</code>，用一维 Gauss-Newton：</p>
+            <p><code>(J^T J) Δs = -J^T F</code></p>
+            <p><code>s_g <- s_g + Δs</code>。这就是几根杆被同一个中间块耦合时的 matrix 解法。</p>
+          </div>
+          <div class="formula-card">
+            <strong>8. 轨迹和同步控制</strong>
             <p>从 current pose 到 target pose 取若干个中间位姿：</p>
             <p><code>p(t)=(1-t)p_0+t p_1</code></p>
             <p><code>yaw(t), pitch(t), roll(t)</code> 也按同样方式插值。</p>
@@ -651,7 +665,7 @@
             <p>所以实际控制不是“先动 A 再动 B”，而是在同一时间步发送 <code>[s_A, s_B, ...]</code>。GUI 中 <code>Δprev</code> 是每个 actuator 从上一帧到这一帧的增量。</p>
           </div>
           <div class="formula-card">
-            <strong>8. 自动找 lift height</strong>
+            <strong>9. 自动找 lift height</strong>
             <p>设 <code>h</code> 是额外抬高量，<code>Z_high=max(Z_current,Z_target)+h</code>。</p>
             <p>构造两个 waypoint：</p>
             <p><code>W1=[X_current,Y_current,Z_high]</code></p>
@@ -757,6 +771,7 @@
                 <select id="${item.id}-type">
                   <option value="slider" ${item.type === "slider" ? "selected" : ""}>1D slider</option>
                   <option value="chainSlider" ${item.type === "chainSlider" ? "selected" : ""}>multi-link to slider</option>
+                  <option value="couplerSlider" ${item.type === "couplerSlider" ? "selected" : ""}>intermediate coupler slider</option>
                   <option value="fixed" ${item.type === "fixed" ? "selected" : ""}>fixed anchor</option>
                 </select>
               </label>
@@ -764,6 +779,10 @@
             </div>
             <div class="grid-2">
               <label>Chain lengths <input id="${item.id}-chain" type="text" value="${item.chainLengths || item.length}" ${item.type === "chainSlider" ? "" : "disabled"}></label>
+            </div>
+            <div class="grid-2">
+              <label>Coupler group <input id="${item.id}-coupler-group" type="text" value="${item.couplerGroup || "K1"}" ${item.type === "couplerSlider" ? "" : "disabled"}></label>
+              <label>Coupler note <input id="${item.id}-coupler-note" type="text" value="${item.couplerNote || ""}" ${item.type === "couplerSlider" ? "" : "disabled"}></label>
             </div>
             <div class="grid-2">
               <label>Current stroke <input id="${item.id}-current" type="number" step="0.1" value="${item.currentStroke || 0}" ${item.type === "fixed" ? "disabled" : ""}></label>
@@ -791,6 +810,11 @@
               `).join("")}
             </div>
             <div class="grid-3">
+              ${["x", "y", "z"].map((axis, axisIndex) => `
+                <label>Coupler ${axis.toUpperCase()} offset <input id="${item.id}-coupler-${axis}" type="number" step="0.1" value="${(item.couplerOffset || [0, 0, 0])[axisIndex]}" ${item.type === "couplerSlider" ? "" : "disabled"}></label>
+              `).join("")}
+            </div>
+            <div class="grid-3">
               <label>Yaw deg <input id="${item.id}-yaw" type="number" step="1" value="${item.yaw}"></label>
               <label>Pitch deg <input id="${item.id}-pitch" type="number" step="1" value="${item.pitch}"></label>
               <label>Roll deg <input id="${item.id}-roll" type="number" step="1" value="${item.roll}"></label>
@@ -804,7 +828,7 @@
                 </select>
               </label>
             </div>
-            <div class="mini">${item.type === "fixed" ? "Fixed anchor 没有 motor command，只检查目标位姿是否满足这条固定连杆长度。" : item.type === "chainSlider" ? "Multi-link 表示中间有多根杆串联到 slider；GUI 先求 slider 可行区间，再选离 current stroke 最近的目标。" : "Current stroke 是现在滑块在轴上的绝对位置；GUI 输出 target stroke 和 move Δs = target - current。"}</div>
+            <div class="mini">${item.type === "fixed" ? "Fixed anchor 没有 motor command，只检查目标位姿是否满足这条固定连杆长度。" : item.type === "chainSlider" ? "Multi-link 表示中间有多根杆串联到 slider；GUI 先求 slider 可行区间，再选离 current stroke 最近的目标。" : item.type === "couplerSlider" ? "Coupler slider 表示多根杆接在同一个中间刚体连接块上；同一个 Coupler group 共享一个 stroke，用 residual matrix 一起求。" : "Current stroke 是现在滑块在轴上的绝对位置；GUI 输出 target stroke 和 move Δs = target - current。"}</div>
           </div>
         </article>
       `).join("");
@@ -821,6 +845,9 @@
         roll: readNumber(`${item.id}-roll`),
         axis: el(`${item.id}-axis`) ? el(`${item.id}-axis`).value : item.axis,
         branch: el(`${item.id}-branch`) ? el(`${item.id}-branch`).value : item.branch,
+        couplerGroup: el(`${item.id}-coupler-group`) ? el(`${item.id}-coupler-group`).value.trim() || "K1" : item.couplerGroup || "K1",
+        couplerNote: el(`${item.id}-coupler-note`) ? el(`${item.id}-coupler-note`).value : item.couplerNote || "",
+        couplerOffset: ["x", "y", "z"].map((axis, axisIndex) => el(`${item.id}-coupler-${axis}`) ? readNumber(`${item.id}-coupler-${axis}`) : (item.couplerOffset || [0, 0, 0])[axisIndex]),
         currentStroke: el(`${item.id}-current`) ? readNumber(`${item.id}-current`) : item.currentStroke || 0,
         strokeMin: el(`${item.id}-stroke-min`) ? readNumber(`${item.id}-stroke-min`) : Number.isFinite(item.strokeMin) ? item.strokeMin : -20,
         strokeMax: el(`${item.id}-stroke-max`) ? readNumber(`${item.id}-stroke-max`) : Number.isFinite(item.strokeMax) ? item.strokeMax : 20,
@@ -898,9 +925,85 @@
       };
     }
 
+    function couplerGroupKey(item) {
+      return (item.couplerGroup || "K1").trim() || "K1";
+    }
+
+    function solveCouplerGroups(pose, previousStrokes) {
+      const groups = {};
+      constraints
+        .filter((item) => item.type === "couplerSlider")
+        .forEach((item) => {
+          const key = couplerGroupKey(item);
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(item);
+        });
+
+      const solutions = {};
+      Object.entries(groups).forEach(([key, items]) => {
+        const driver = items[0];
+        const motorRotation = rotationMatrix(driver.yaw, driver.pitch, driver.roll);
+        const v = transform(motorRotation, localAxis(driver.axis));
+        const lower = Math.max(...items.map((item) => Number.isFinite(item.strokeMin) ? item.strokeMin : -20));
+        const upper = Math.min(...items.map((item) => Number.isFinite(item.strokeMax) ? item.strokeMax : 20));
+        const referenceValues = items.map((item) => previousStrokes && Number.isFinite(previousStrokes[item.id]) ? previousStrokes[item.id] : item.currentStroke || 0);
+        let stroke = clamp(referenceValues.reduce((sum, value) => sum + value, 0) / referenceValues.length, lower, upper);
+        const iterations = [];
+
+        for (let iteration = 0; iteration < 24; iteration += 1) {
+          let normal = 0;
+          let gradient = 0;
+          const residuals = [];
+          items.forEach((item) => {
+            const q = platformPointToWorld(pose, item.attach);
+            const localOffset = item.couplerOffset || [0, 0, 0];
+            const offset = transform(motorRotation, localOffset);
+            const p = add(add(driver.base, scale(v, stroke)), offset);
+            const u = subtract(q, p);
+            const distance = length(u);
+            const residual = distance - item.length;
+            const jacobian = distance > 1e-9 ? -dot(u, v) / distance : 0;
+            normal += jacobian * jacobian;
+            gradient += jacobian * residual;
+            residuals.push({ id: item.id, q, p, offset, distance, residual, jacobian });
+          });
+          const delta = normal > 1e-12 ? -gradient / normal : 0;
+          iterations.push({ iteration, stroke, normal, gradient, delta, residuals });
+          stroke = clamp(stroke + delta, lower, upper);
+          if (Math.abs(delta) < 1e-7) break;
+        }
+
+        const residuals = items.map((item) => {
+          const q = platformPointToWorld(pose, item.attach);
+          const offset = transform(motorRotation, item.couplerOffset || [0, 0, 0]);
+          const p = add(add(driver.base, scale(v, stroke)), offset);
+          const distance = length(subtract(q, p));
+          return { id: item.id, q, p, offset, distance, residual: distance - item.length };
+        });
+        const maxResidual = residuals.length ? Math.max(...residuals.map((item) => Math.abs(item.residual))) : 0;
+        solutions[key] = {
+          key,
+          driverId: driver.id,
+          base: driver.base,
+          rotation: motorRotation,
+          v,
+          stroke,
+          lower,
+          upper,
+          currentStroke: referenceValues.reduce((sum, value) => sum + value, 0) / referenceValues.length,
+          iterations,
+          residuals,
+          maxResidual,
+          selectionReason: `shared coupler stroke solved from ${items.length} rod residuals with (J^T J) Δs = -J^T F`
+        };
+      });
+      return solutions;
+    }
+
     function calculateIK(poseOverride = null, previousStrokes = null, shouldSync = true) {
       if (shouldSync) syncConstraintsFromInputs();
       const pose = poseOverride || targetPoseFromInputs();
+      const couplerSolutions = solveCouplerGroups(pose, previousStrokes);
       const links = constraints.map((item) => {
         const motorRotation = rotationMatrix(item.yaw, item.pitch, item.roll);
         const targetJoint = platformPointToWorld(pose, item.attach);
@@ -912,6 +1015,35 @@
           const residual = length(c) - item.length;
           const rod = rodPose(item.base, targetJoint);
           return { ...item, rotation: motorRotation, targetJoint, residual, anchor: item.base, rod };
+        }
+        if (item.type === "couplerSlider") {
+          const key = couplerGroupKey(item);
+          const solution = couplerSolutions[key];
+          const offset = transform(solution.rotation, item.couplerOffset || [0, 0, 0]);
+          const couplerPoint = add(add(solution.base, scale(solution.v, solution.stroke)), offset);
+          const distance = length(subtract(targetJoint, couplerPoint));
+          const residual = distance - item.length;
+          const moveDelta = Number.isFinite(solution.stroke) ? solution.stroke - item.currentStroke : Number.NaN;
+          const stepDelta = Number.isFinite(solution.stroke) ? solution.stroke - referenceStroke : Number.NaN;
+          const rod = rodPose(couplerPoint, targetJoint);
+          return {
+            ...item,
+            rotation: solution.rotation,
+            targetJoint,
+            c,
+            v: solution.v,
+            stroke: solution.stroke,
+            moveDelta,
+            stepDelta,
+            referenceStroke,
+            sliderPoint: add(solution.base, scale(solution.v, solution.stroke)),
+            couplerPoint,
+            couplerOffsetWorld: offset,
+            couplerSolution: solution,
+            residual,
+            rod,
+            selectionReason: solution.selectionReason
+          };
         }
         const v = transform(motorRotation, localAxis(item.axis));
         if (item.type === "chainSlider") {
@@ -1104,6 +1236,25 @@
           statusClass: "status-bad"
         };
       }
+      if (link.type === "couplerSlider") {
+        const distance = length(subtract(link.targetJoint, link.couplerPoint));
+        const strokeLimited = link.stroke < link.strokeMin || link.stroke > link.strokeMax;
+        const residual = distance - link.length;
+        const ok = Math.abs(residual) <= 0.01 && !strokeLimited;
+        return {
+          id: link.id,
+          type: `coupler ${couplerGroupKey(link)}`,
+          q: link.targetJoint,
+          start: link.couplerPoint,
+          distance,
+          target: fmt(link.length),
+          residual,
+          stroke: link.stroke,
+          strokeRange: `[${fmt(link.strokeMin)}, ${fmt(link.strokeMax)}]`,
+          status: ok ? "ok" : strokeLimited ? "stroke limit" : "residual",
+          statusClass: ok ? "status-ok" : strokeLimited ? "status-bad" : "status-warn"
+        };
+      }
       const distance = length(subtract(link.targetJoint, link.sliderPoint));
       const strokeLimited = link.stroke < link.strokeMin || link.stroke > link.strokeMax;
       if (link.type === "chainSlider") {
@@ -1196,6 +1347,20 @@
                 <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
                 <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
                 <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+              </div>
+            </div>
+          `;
+        }
+        if (link.type === "couplerSlider") {
+          return `
+            <div class="step">
+              <span class="step-index">${link.id}</span>
+              <div>
+                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: shared s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; move Δs = ${fmt(link.moveDelta)} ${unit}</strong>
+                <div class="mini">coupler point K${link.id} = ${vec(link.couplerPoint)} ${unit}; local offset d${link.id} = ${vec(link.couplerOffset || [0, 0, 0])} ${unit}</div>
+                <div class="mini">rod length residual = ${fmt(link.residual)} ${unit}; group max residual = ${fmt(link.couplerSolution.maxResidual)} ${unit}</div>
+                <div class="mini">matrix solve: ${link.couplerSolution.selectionReason}</div>
+                <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
               </div>
             </div>
           `;
@@ -1453,6 +1618,32 @@ ${matrix(qH.map((value) => [value]))}`;
             <p>注意：多连杆链的中间折叠姿态不唯一，除非再指定每个 hinge 的旋转平面/转轴。这里输出的是等效链方向。</p>
           </div>`;
         }
+        if (link.type === "couplerSlider") {
+          const solution = link.couplerSolution;
+          const lastIteration = solution.iterations[solution.iterations.length - 1];
+          const residualRows = solution.residuals.map((item) =>
+            `<p><code>e_${item.id}=||q_${item.id}-K_${item.id}||-L_${item.id} = ${fmt(item.distance)} - ${fmt(constraints.find((constraint) => constraint.id === item.id)?.length || 0)} = ${fmt(item.residual)}</code></p>`
+          ).join("");
+          return `<div class="formula-card">
+            <strong>Link ${link.id}: intermediate coupler 数值计算</strong>
+            <p><code>group = ${couplerGroupKey(link)}</code>。同一个 group 里的杆共享同一个 stroke <code>s_${couplerGroupKey(link)}</code>，所以它们是一起求解的。</p>
+            <p><code>b_${couplerGroupKey(link)} = ${vec(solution.base)}</code>：coupler slider base；<code>v_${couplerGroupKey(link)} = ${vec(solution.v)}</code>：coupler 运动方向。</p>
+            <p><code>d_${link.id} = ${vec(link.couplerOffset || [0, 0, 0])}</code>：这条杆接在 coupler 上的局部偏移点。</p>
+            <p><code>K_${link.id}(s)=b+s v+R_c d_${link.id}</code></p>
+            <p><code>K_${link.id} = ${vec(link.couplerPoint)}</code>，<code>q_${link.id} = ${vec(link.targetJoint)}</code></p>
+            <pre class="math-block">F(s) = [e_1, e_2, ...]^T
+J(s) = [de_1/ds, de_2/ds, ...]^T
+(J^T J) Δs = -J^T F
+
+last iteration:
+J^T J = ${fmt(lastIteration ? lastIteration.normal : 0)}
+J^T F = ${fmt(lastIteration ? lastIteration.gradient : 0)}
+Δs    = ${fmt(lastIteration ? lastIteration.delta : 0)}</pre>
+            <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.moveDelta)}</code></p>
+            ${residualRows}
+            <p><code>group max |residual| = ${fmt(solution.maxResidual)}</code>。如果这个值不接近 0，说明这个目标 sample 位姿和这个 coupler 几何不完全兼容。</p>
+          </div>`;
+        }
         return `<div class="formula-card">
           <strong>Link ${link.id}: slider 数值计算</strong>
           <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
@@ -1622,6 +1813,19 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
           drawSegment(ctx, basePoint, targetPoint, link.color);
           drawLabel(ctx, `F${link.id}`, basePoint, link.color, 8, -8);
           drawLabel(ctx, `L${link.id}`, [(basePoint[0] + targetPoint[0]) / 2, (basePoint[1] + targetPoint[1]) / 2], link.color, 6, -6);
+        } else if (link.type === "couplerSlider") {
+          const sliderPoint = project(link.sliderPoint, rect.width, rect.height, zoom);
+          const couplerPoint = project(link.couplerPoint, rect.width, rect.height, zoom);
+          drawArrow(ctx, basePoint, sliderPoint, link.color);
+          drawSegment(ctx, sliderPoint, couplerPoint, "#171714", true);
+          drawSegment(ctx, couplerPoint, targetPoint, link.color);
+          drawLabel(ctx, `s${couplerGroupKey(link)}`, [(basePoint[0] + sliderPoint[0]) / 2, (basePoint[1] + sliderPoint[1]) / 2], link.color, 6, -6);
+          drawLabel(ctx, `K${link.id}`, couplerPoint, "#171714", 8, -8);
+          drawLabel(ctx, `L${link.id}`, [(couplerPoint[0] + targetPoint[0]) / 2, (couplerPoint[1] + targetPoint[1]) / 2], link.color, 6, -6);
+          ctx.fillStyle = "#171714";
+          ctx.beginPath();
+          ctx.arc(couplerPoint[0], couplerPoint[1], 6, 0, Math.PI * 2);
+          ctx.fill();
         } else if (link.type === "chainSlider") {
           const sliderPoint = project(link.sliderPoint, rect.width, rect.height, zoom);
           drawArrow(ctx, basePoint, sliderPoint, link.color);
@@ -1698,7 +1902,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       constraints = [
         {
           id: "A",
-          type: "chainSlider",
+          type: "couplerSlider",
           color: colors[0],
           attach: [-3.6, 2.2, 0],
           base: [-9.5, 3.4, 0.2],
@@ -1708,6 +1912,9 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
           axis: "x",
           length: 3.6,
           chainLengths: "1.4, 1.2, 1.0",
+          couplerGroup: "Ktop",
+          couplerOffset: [0, 0.7, 0],
+          couplerNote: "upper rod on shared motor-side bracket",
           currentStroke: 10,
           strokeMin: -20,
           strokeMax: 25,
@@ -1715,16 +1922,19 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         },
         {
           id: "B",
-          type: "chainSlider",
+          type: "couplerSlider",
           color: colors[1],
           attach: [-3.6, 0.2, 0],
-          base: [-9.2, 1.2, 0.1],
+          base: [-9.5, 3.4, 0.2],
           yaw: 4,
           pitch: 0,
           roll: 0,
           axis: "x",
           length: 3.4,
           chainLengths: "1.7, 1.7",
+          couplerGroup: "Ktop",
+          couplerOffset: [0, -0.7, 0],
+          couplerNote: "lower rod on same shared bracket",
           currentStroke: 10,
           strokeMin: -20,
           strokeMax: 25,

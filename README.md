@@ -35,6 +35,7 @@ Then it solves each link:
 
 - `1D slider`: analytic quadratic solution for the actuator stroke.
 - `multi-link to slider`: feasible stroke interval from chain reach.
+- `intermediate coupler slider`: several rods share one motor-side rigid coupler stroke and are solved together with a residual/Jacobian matrix.
 - `fixed anchor`: constraint residual check.
 
 ## Path Check
