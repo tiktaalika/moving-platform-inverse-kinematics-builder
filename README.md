@@ -1,6 +1,6 @@
 # Moving Platform Inverse Kinematics (IK) Builder
 
-A single-file browser tool for teaching and checking inverse kinematics of a moving sample/platform connected by rods, fixed anchors, 1D sliders, and simplified multi-link chains.
+A single-file browser tool for checking inverse kinematics of a moving sample/platform connected by rods, fixed anchors, 1D sliders, and simplified multi-link chains.
 
 Repository:
 
