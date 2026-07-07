@@ -8,13 +8,14 @@ GitHub 仓库：
 
 在线网页：
 
-[https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/)
+- 中文版：[https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/)
+- 英文版：[https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html)
 
 `IK` 是 `inverse kinematics` 的缩写。标题里同时保留完整写法和缩写，是为了让熟悉/不熟悉机器人术语的人都能看懂。
 
 ## 使用方式
 
-这是一个静态网页工具。clone 或下载仓库之后，直接用浏览器打开 `index.html`。
+这是一个静态网页工具。中文版是 `index.html`，英文版是 `index-en.html`。
 
 ## 它解决什么问题
 

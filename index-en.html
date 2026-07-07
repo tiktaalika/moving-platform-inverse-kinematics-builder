@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -456,12 +456,12 @@
     <section class="left">
       <div class="header">
         <h1>Platform Inverse Kinematics (IK) Builder</h1>
-        <p class="subtitle">把 sample/platform 当作一个刚体，在平台任意位置添加连接点；每条连杆另一端可以接到一维 slider，也可以接到固定 anchor。</p>
-        <p class="subtitle"><a href="./index-en.html">English version</a></p>
+        <p class="subtitle">Treat the sample/platform as a rigid body, add attachment points anywhere on it, and connect each link to a 1D slider, a fixed anchor, or an intermediate coupler.</p>
+        <p class="subtitle"><a href="./index.html">Chinese version</a></p>
       </div>
 
       <section class="panel block">
-        <h2 class="section-title">目标 sample 位姿</h2>
+        <h2 class="section-title">Target Sample Pose</h2>
         <div class="grid-3">
           <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
           <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
@@ -475,7 +475,7 @@
       </section>
 
       <section class="panel block">
-        <h2 class="section-title">Sample 几何</h2>
+        <h2 class="section-title">Sample Geometry</h2>
         <div class="grid-3">
           <label>Size X <input id="sample-x" type="number" min="0.1" step="0.1" value="2"></label>
           <label>Size Y <input id="sample-y" type="number" min="0.1" step="0.1" value="2"></label>
@@ -489,9 +489,9 @@
       </section>
 
       <section class="panel block">
-        <h2 class="section-title">运动轨迹 / Middle positions</h2>
+        <h2 class="section-title">Motion Path / Middle Positions</h2>
         <div class="mini" style="margin-bottom:10px">
-          这里不是设置 motor 本身，而是设置 sample 从哪里开始、要去哪里。<code>Current</code> 是起点 sample 位姿；左上面的 <code>Target sample 位姿</code> 是终点；<code>Steps</code> 是把这条路切成几段来检查。
+          This section does not set the motors directly. It sets where the sample starts and where it should go. <code>Current</code> is the starting sample pose, <code>Target Sample Pose</code> is the final pose, and <code>Steps</code> is the number of path samples used for checking.
         </div>
         <div class="grid-3">
           <label>Current X <input id="current-x" type="number" step="0.1" value="0"></label>
@@ -510,18 +510,18 @@
           <label>Max lift <input id="lift-max" type="number" min="0" step="0.5" value="20"></label>
           <label>Lift step <input id="lift-step" type="number" min="0.1" step="0.1" value="0.5"></label>
         </div>
-        <div class="mini" style="margin-top:10px">检查结果在右侧 <code>Path Feasibility Check</code>。每一个 middle position 都会同时反求所有 actuator 的目标 stroke，并用上一帧 stroke 选最近解，避免跳到另一支解。</div>
+        <div class="mini" style="margin-top:10px">The result appears in <code>Path Feasibility Check</code>. For every middle position, the app solves all actuator target strokes together and uses the previous-frame stroke to keep the solution branch continuous.</div>
       </section>
 
       <section class="panel block">
         <div class="toolbar">
-          <h2 class="section-title" style="margin:0">连接/约束</h2>
+          <h2 class="section-title" style="margin:0">Links / Constraints</h2>
           <div style="display:flex; gap:8px; flex-wrap:wrap">
             <button id="load-example" class="secondary" type="button">Load example mechanism</button>
             <button id="add-constraint" type="button">Add link</button>
           </div>
         </div>
-        <div class="mini">每条 link 都从 sample 上的局部连接点 <code>a_i</code> 出发，另一端可以是 slider、fixed anchor，或一个中间刚体 coupler 上的铰点。Coupler 适合表示图里那种黄色中间连接块：多根杆共享同一个 motor-side 运动。</div>
+        <div class="mini">Each link starts from a local sample attachment point <code>a_i</code>. The other end can be a slider, a fixed anchor, or a joint on an intermediate rigid coupler. The coupler model represents a motor-side bracket where multiple rods share one motion.</div>
       </section>
 
       <section id="constraints"></section>
@@ -545,7 +545,7 @@
       </section>
 
       <section class="panel block" style="margin-top:16px">
-        <h2 class="section-title">Verification Panel / 反代检查</h2>
+        <h2 class="section-title">Verification Panel / Back-Substitution Check</h2>
         <div id="verification-output"></div>
       </section>
 
@@ -580,98 +580,98 @@
       </section>
 
       <section class="formula">
-        <h3>核心公式与算法</h3>
+        <h3>Core Formulas and Algorithm</h3>
         <div class="formula-card" style="margin-bottom:12px">
-          <strong>0. 符号表：先看这里</strong>
-          <p><code>i</code>：第 i 条连杆/link，例如 A、B、C。</p>
-          <p><code>p</code>：sample 参考点在全局坐标里的目标位置。</p>
-          <p><code>R</code>：sample 的目标姿态旋转矩阵。</p>
-          <p><code>r</code>：sample 参考点在 sample 自己局部坐标里的位置，通常是 <code>[0,0,0]</code>。</p>
-          <p><code>a_i</code>：第 i 条连杆接在 sample 上的那个点，使用 sample 局部坐标。</p>
-          <p><code>q_i</code>：第 i 个 sample 连接点变换到全局坐标后的目标位置，也就是连杆应该接到 sample 的位置。</p>
-          <p><code>b_i</code>：slider 的 base 点，也就是滑块轨道的起点/参考点。</p>
-          <p><code>v_i</code>：slider 正方向的单位向量。</p>
-          <p><code>s_i</code>：slider 的目标绝对位置/stroke，不是移动量。</p>
-          <p><code>Δs</code>：slider 需要移动的量，<code>Δs = s_target - s_current</code>。</p>
-          <p><code>f_i</code>：fixed anchor 的全局坐标，也就是固定端的位置。</p>
-          <p><code>K_g</code>：第 g 个 intermediate coupler / 中间刚体连接块。</p>
-          <p><code>d_i</code>：第 i 条杆接在 coupler 上的局部偏移点，使用 coupler 局部坐标。</p>
-          <p><code>L_i</code>：第 i 条连杆的长度；如果是多连杆链，则是 <code>L_i1,L_i2,...</code>。</p>
-          <p><code>residual / e_i</code>：长度误差，等于“实际算出来的距离 - 设定杆长”。越接近 0 越满足约束。</p>
-          <p><code>rod axis</code>：连杆从起点指向 sample 连接点的单位方向向量，不是 slider 轴。</p>
-          <p><code>chain lengths</code>：多连杆链中每一段杆的长度，例如 <code>1.4, 1.2, 1.0</code>。</p>
-          <p><code>feasible stroke interval</code>：多连杆链能达到 sample 连接点时，slider stroke 可以落入的区间。</p>
-          <p><code>middle position</code>：运动路径中的中间 sample 位姿；每个中间位姿都会同时反求所有 actuator。</p>
+          <strong>0. Symbol Table</strong>
+          <p><code>i</code>: link index, for example A, B, or C.</p>
+          <p><code>p</code>: target global position of the sample reference point.</p>
+          <p><code>R</code>: target sample rotation matrix.</p>
+          <p><code>r</code>: sample reference point in the sample-local frame, usually <code>[0,0,0]</code>.</p>
+          <p><code>a_i</code>: sample-local attachment point for link i.</p>
+          <p><code>q_i</code>: target global position of sample attachment point i.</p>
+          <p><code>b_i</code>: slider base point, or the reference point of the slider rail.</p>
+          <p><code>v_i</code>: unit vector of the positive slider direction.</p>
+          <p><code>s_i</code>: target absolute slider stroke, not the incremental move.</p>
+          <p><code>Δs</code>: required stroke move, <code>Δs = s_target - s_current</code>.</p>
+          <p><code>f_i</code>: fixed anchor point in global coordinates.</p>
+          <p><code>K_g</code>: intermediate rigid coupler group g.</p>
+          <p><code>d_i</code>: local offset of the rod joint on the coupler body.</p>
+          <p><code>L_i</code>: link length. For a chain, use <code>L_i1,L_i2,...</code>.</p>
+          <p><code>residual / e_i</code>: length error, equal to computed distance minus the specified link length.</p>
+          <p><code>rod axis</code>: unit vector from the start point of a rod to its sample attachment point. This is not the slider axis.</p>
+          <p><code>chain lengths</code>: segment lengths in a multi-link chain, for example <code>1.4, 1.2, 1.0</code>.</p>
+          <p><code>feasible stroke interval</code>: slider stroke range where the multi-link chain can reach the sample point.</p>
+          <p><code>middle position</code>: an intermediate sample pose along the motion path. Every middle pose is solved for all actuators.</p>
         </div>
         <div class="formula-grid">
           <div class="formula-card">
-            <strong>1. 平台刚体变换</strong>
-            <p>平台目标位姿是 <code>p,R</code>。平台上的局部连接点是 <code>a_i</code>，参考点是 <code>r</code>。</p>
+            <strong>1. Platform Rigid-Body Transform</strong>
+            <p>The platform target pose is <code>p,R</code>. The local attachment point is <code>a_i</code>, and the local reference point is <code>r</code>.</p>
             <p><code>q_i = p + R(a_i - r)</code></p>
-            <p><code>q_i</code> 的意思是：第 i 条连杆在 sample 上的连接点，经过 sample 位姿变换后，在全局坐标里的位置。</p>
-            <p>一旦 sample 位姿确定，每个 <code>q_i</code> 都确定，所以每条连杆可以独立反求自己的自由度。</p>
+            <p><code>q_i</code> is the global target position of the sample-side joint for link i.</p>
+            <p>Once the sample pose is fixed, every <code>q_i</code> is known. Then each independent link can solve its own actuator degree of freedom.</p>
           </div>
           <div class="formula-card">
             <strong>2. Slider + rod</strong>
-            <p>slider base 是 <code>b_i</code>，stroke 正方向是单位向量 <code>v_i</code>，连杆长度是 <code>L_i</code>。</p>
+            <p>The slider base is <code>b_i</code>, the positive stroke direction is unit vector <code>v_i</code>, and the rod length is <code>L_i</code>.</p>
             <p><code>m_i(s_i)=b_i+s_i v_i</code></p>
-            <p><code>m_i</code> 是 slider 端点的位置，<code>s_i</code> 是 slider 的目标绝对位置。</p>
+            <p><code>m_i</code> is the slider-side joint position. <code>s_i</code> is the target absolute slider stroke.</p>
             <p><code>||q_i-m_i(s_i)||^2=L_i^2</code></p>
           </div>
           <div class="formula-card">
-            <strong>3. Slider 解析解</strong>
-            <p>令 <code>c_i=q_i-b_i</code>，展开得：</p>
+            <strong>3. Analytical Slider Solution</strong>
+            <p>Let <code>c_i=q_i-b_i</code>. Expanding the constraint gives:</p>
             <p><code>s_i^2-2(v_i^T c_i)s_i+(c_i^T c_i-L_i^2)=0</code></p>
             <p><code>s_i=v_i^T c_i ± sqrt((v_i^T c_i)^2-(c_i^T c_i-L_i^2))</code></p>
           </div>
           <div class="formula-card">
             <strong>4. Fixed anchor</strong>
-            <p>固定 anchor 位置是 <code>f_i</code>。它没有 motor command，只检查约束误差：</p>
+            <p>The fixed anchor is <code>f_i</code>. It has no motor command; it only checks the constraint error:</p>
             <p><code>e_i = ||q_i-f_i|| - L_i</code></p>
-            <p><code>e_i</code> 也叫 residual。若 <code>e_i=0</code>，该固定连杆满足目标位姿；否则该目标位姿与固定约束不一致。</p>
+            <p><code>e_i</code> is the residual. If <code>e_i=0</code>, the fixed link is compatible with the target pose.</p>
           </div>
           <div class="formula-card">
             <strong>5. Rod pose</strong>
-            <p>每条杆的起点和终点确定后，杆的姿态也确定。</p>
+            <p>Once the start and end points of a rod are known, the rod pose is also known.</p>
             <p><code>center_i = (start_i + q_i)/2</code></p>
             <p><code>axis_i = (q_i - start_i)/||q_i - start_i||</code></p>
-            <p><code>start_i</code> 是连杆的另一端：slider link 里是 slider 端点 <code>m_i</code>，fixed link 里是固定点 <code>f_i</code>。</p>
-            <p>GUI 输出 <code>center</code>、<code>axis</code>、<code>yaw</code>、<code>pitch</code>。</p>
+            <p><code>start_i</code> is the other end of the link. For a slider link it is <code>m_i</code>; for a fixed link it is <code>f_i</code>.</p>
+            <p>The GUI reports <code>center</code>, <code>axis</code>, <code>yaw</code>, and <code>pitch</code>.</p>
           </div>
           <div class="formula-card">
             <strong>6. Multi-link chain</strong>
-            <p>如果 sample 点不是直接接到 slider，而是经过多根杆串联到 slider，设杆长为 <code>L_1,L_2,...,L_n</code>。</p>
-            <p>最大可达距离：<code>Rmax = L_1+L_2+...+L_n</code></p>
-            <p>最小可达距离：<code>Rmin = max(0, Lmax - sum(other L))</code></p>
-            <p>slider 点 <code>m(s)</code> 到 sample 连接点 <code>q</code> 的距离必须满足：<code>Rmin <= ||q-m(s)|| <= Rmax</code>。</p>
-            <p>这会给出一个可行 stroke 区间；中间每根杆的折叠姿态若没有 hinge plane/axis，则不唯一。</p>
+            <p>If the sample point connects to the slider through a serial chain of links, use segment lengths <code>L_1,L_2,...,L_n</code>.</p>
+            <p>Maximum reach: <code>Rmax = L_1+L_2+...+L_n</code></p>
+            <p>Minimum reach: <code>Rmin = max(0, Lmax - sum(other L))</code></p>
+            <p>The distance from slider point <code>m(s)</code> to sample point <code>q</code> must satisfy <code>Rmin <= ||q-m(s)|| <= Rmax</code>.</p>
+            <p>This gives a feasible stroke interval. Internal chain folding is not unique unless hinge planes or hinge axes are specified.</p>
           </div>
           <div class="formula-card">
             <strong>7. Intermediate coupler</strong>
-            <p>如果多根杆接到同一个中间刚体连接块 <code>K_g</code>，它们共享同一个 stroke <code>s_g</code>，不能再完全逐条独立求解。</p>
+            <p>If multiple rods connect to the same intermediate rigid coupler <code>K_g</code>, they share one stroke <code>s_g</code> and must be solved together.</p>
             <p><code>p_i(s_g)=b_g+s_g v_g+d_i</code></p>
             <p><code>e_i(s_g)=||q_i-p_i(s_g)||-L_i</code></p>
-            <p>把同一个 group 的 residual 叠起来：</p>
+            <p>Stack the residuals from the same coupler group:</p>
             <p><code>F(s_g)=[e_1,e_2,...]^T</code></p>
-            <p><code>J_i=de_i/ds_g</code>，用一维 Gauss-Newton：</p>
+            <p><code>J_i=de_i/ds_g</code>. Use a one-dimensional Gauss-Newton update:</p>
             <p><code>(J^T J) Δs = -J^T F</code></p>
-            <p><code>s_g <- s_g + Δs</code>。这就是几根杆被同一个中间块耦合时的 matrix 解法。</p>
+            <p><code>s_g <- s_g + Δs</code>. This is the matrix solve used when several rods are coupled by the same intermediate body.</p>
           </div>
           <div class="formula-card">
-            <strong>8. 轨迹和同步控制</strong>
-            <p>从 current pose 到 target pose 取若干个中间位姿：</p>
+            <strong>8. Trajectory and Synchronized Control</strong>
+            <p>Sample several middle poses from current pose to target pose:</p>
             <p><code>p(t)=(1-t)p_0+t p_1</code></p>
-            <p><code>yaw(t), pitch(t), roll(t)</code> 也按同样方式插值。</p>
-            <p>对每一个 <code>t_k</code>，先算所有 <code>q_i(t_k)</code>，再同时反求所有 <code>s_i(t_k)</code>。</p>
-            <p>所以实际控制不是“先动 A 再动 B”，而是在同一时间步发送 <code>[s_A, s_B, ...]</code>。GUI 中 <code>Δprev</code> 是每个 actuator 从上一帧到这一帧的增量。</p>
+            <p><code>yaw(t), pitch(t), roll(t)</code> are interpolated in the same way.</p>
+            <p>For every <code>t_k</code>, compute all <code>q_i(t_k)</code>, then solve all <code>s_i(t_k)</code>.</p>
+            <p>In actual control this means sending <code>[s_A, s_B, ...]</code> at the same time step. <code>Δprev</code> is the actuator increment from the previous frame.</p>
           </div>
           <div class="formula-card">
-            <strong>9. 自动找 lift height</strong>
-            <p>设 <code>h</code> 是额外抬高量，<code>Z_high=max(Z_current,Z_target)+h</code>。</p>
-            <p>构造两个 waypoint：</p>
+            <strong>9. Automatic Lift Height Search</strong>
+            <p>Let <code>h</code> be an extra lift amount: <code>Z_high=max(Z_current,Z_target)+h</code>.</p>
+            <p>Construct two waypoints:</p>
             <p><code>W1=[X_current,Y_current,Z_high]</code></p>
             <p><code>W2=[X_target,Y_target,Z_high]</code></p>
-            <p>程序从 <code>h=0</code> 开始，每次加 <code>Lift step</code>，检查路径 <code>Current -> W1 -> W2 -> Target</code>。第一个所有 step 都 <code>OK</code> 的 <code>h</code> 就是当前搜索精度下的最小可行抬高量。</p>
+            <p>The app starts from <code>h=0</code>, increases by <code>Lift step</code>, and checks <code>Current -> W1 -> W2 -> Target</code>. The first <code>h</code> for which all steps are <code>OK</code> is the minimum feasible lift at the selected search resolution.</p>
           </div>
         </div>
         <div id="numeric-derivation" class="formula-card" style="margin-top:12px"></div>
@@ -829,7 +829,7 @@
                 </select>
               </label>
             </div>
-            <div class="mini">${item.type === "fixed" ? "Fixed anchor 没有 motor command，只检查目标位姿是否满足这条固定连杆长度。" : item.type === "chainSlider" ? "Multi-link 表示中间有多根杆串联到 slider；GUI 先求 slider 可行区间，再选离 current stroke 最近的目标。" : item.type === "couplerSlider" ? "Coupler slider 表示多根杆接在同一个中间刚体连接块上；同一个 Coupler group 共享一个 stroke，用 residual matrix 一起求。" : "Current stroke 是现在滑块在轴上的绝对位置；GUI 输出 target stroke 和 move Δs = target - current。"}</div>
+            <div class="mini">${item.type === "fixed" ? "A fixed anchor has no motor command. It only checks whether the target pose satisfies this fixed rod length." : item.type === "chainSlider" ? "A multi-link chain represents several rods in series to a slider. The GUI solves the feasible slider interval, then chooses the target closest to the current stroke." : item.type === "couplerSlider" ? "A coupler slider means several rods attach to one intermediate rigid body. The same Coupler group shares one stroke and is solved with a residual matrix." : "Current stroke is the present absolute slider position. The GUI outputs target stroke and move Δs = target - current."}</div>
           </div>
         </article>
       `).join("");
@@ -1197,15 +1197,15 @@
 
     function frameStatus(frame) {
       if (frame.result.links.some((link) => link.type !== "fixed" && !Number.isFinite(link.stroke))) {
-        return { text: "unreachable", className: "status-bad", detail: "至少一个 slider/chain 在这一中间位姿无解" };
+        return { text: "unreachable", className: "status-bad", detail: "At least one slider or chain has no solution at this middle pose." };
       }
       if (frame.result.links.some((link) => link.type !== "fixed" && Number.isFinite(link.stroke) && (link.stroke < link.strokeMin || link.stroke > link.strokeMax))) {
-        return { text: "stroke limit", className: "status-bad", detail: "至少一个 actuator stroke 超出设定 min/max" };
+        return { text: "stroke limit", className: "status-bad", detail: "At least one actuator stroke is outside the specified min/max range." };
       }
       if (frame.result.links.some((link) => Math.abs(link.residual || 0) > 0.01)) {
-        return { text: "residual", className: "status-warn", detail: "至少一条 fixed 或 chain 约束有长度误差" };
+        return { text: "residual", className: "status-warn", detail: "At least one fixed, chain, or coupler constraint has a length residual." };
       }
-      return { text: "ok", className: "status-ok", detail: "这一中间位姿可达" };
+      return { text: "ok", className: "status-ok", detail: "This middle pose is reachable." };
     }
 
     function verificationForLink(link) {
@@ -1387,20 +1387,20 @@
     function renderTrajectory(frames, liftSearch) {
       const movingLinks = constraints.filter((item) => item.type !== "fixed");
       if (!movingLinks.length) {
-        el("trajectory-output").innerHTML = `<div class="mini">当前没有 slider 或 multi-link slider，所以没有 actuator command。</div>`;
+        el("trajectory-output").innerHTML = `<div class="mini">There is no slider, chain slider, or coupler slider, so there is no actuator command.</div>`;
         return;
       }
       const header = movingLinks.map((item) => `<th>s${item.id} / Δprev</th>`).join("");
       const statuses = frames.map(frameStatus);
       const failed = failedStatuses(frames);
       const summary = failed.length
-        ? `<strong><span class="status-badge status-bad">failed</span> 这条路径没有通过检查。</strong><div class="mini">失败 step: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}。先看这些行的 status，再看对应 actuator 是否显示 unreachable 或 residual。</div>`
-        : `<strong><span class="status-badge status-ok">passed</span> 这条路径目前通过几何可达性检查。</strong><div class="mini">所有 middle positions 都能算出 actuator stroke，且 residual 在 0.01 mm 内。</div>`;
+        ? `<strong><span class="status-badge status-bad">failed</span> This path did not pass the check.</strong><div class="mini">Failed steps: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}. Inspect those rows first, then check whether the corresponding actuator shows unreachable or residual.</div>`
+        : `<strong><span class="status-badge status-ok">passed</span> This path currently passes the geometric reachability check.</strong><div class="mini">Every middle position has actuator strokes, and residuals are within 0.01 mm.</div>`;
       const liftSummary = liftSearch.found
-        ? `<strong><span class="status-badge status-ok">lift found</span> 最小可行抬高量 h = ${fmt(liftSearch.trial.h)} mm。</strong>
-           <div class="mini">测试路径：Current -> W1 -> W2 -> Target，其中 W1 = ${vec(liftSearch.trial.w1.position)}，W2 = ${vec(liftSearch.trial.w2.position)}。搜索步长是 ${fmt(readNumber("lift-step"))} mm，所以真实最小值可能在这个步长以内。</div>`
-        : `<strong><span class="status-badge status-bad">no lift</span> 在 Max lift = ${fmt(readNumber("lift-max"))} mm 内没有找到可行抬高路径。</strong>
-           <div class="mini">这通常说明简单“先抬高再平移再下降”的路径不够，或者 fixed/chain 约束本身让这些中间位姿不兼容。</div>`;
+        ? `<strong><span class="status-badge status-ok">lift found</span> Minimum feasible lift h = ${fmt(liftSearch.trial.h)} mm.</strong>
+           <div class="mini">Tested path: Current -> W1 -> W2 -> Target, where W1 = ${vec(liftSearch.trial.w1.position)} and W2 = ${vec(liftSearch.trial.w2.position)}. Search step is ${fmt(readNumber("lift-step"))} mm, so the true minimum may lie within one step.</div>`
+        : `<strong><span class="status-badge status-bad">no lift</span> No feasible lift path was found within Max lift = ${fmt(readNumber("lift-max"))} mm.</strong>
+           <div class="mini">This usually means the simple lift-translate-lower path is not enough, or the fixed/chain/coupler constraints are incompatible with those middle poses.</div>`;
       const rows = frames.map((frame) => {
         const commandCells = movingLinks.map((item) => {
           const command = frame.commands[item.id];
@@ -1423,13 +1423,13 @@
       el("trajectory-output").innerHTML = `
         <div class="check-summary">
           ${summary}
-          <div class="mini">怎么用：先填左侧 <code>Current</code>，再填上方 <code>Target</code>，然后看这里是否 <code>PASSED</code>。如果失败，把 <code>Steps</code> 加大，例如 20 或 50，可以更细地找出中间哪一步卡住。</div>
+          <div class="mini">How to use it: set <code>Current</code> on the left, set <code>Target</code> above, then check whether this panel shows <code>PASSED</code>. If it fails, increase <code>Steps</code>, for example to 20 or 50, to locate where the path gets stuck.</div>
         </div>
         <div class="check-summary">
           ${liftSummary}
-          <div class="mini">自动抬高搜索从 <code>h=0</code> 开始，每次增加 <code>Lift step</code>，一直试到 <code>Max lift</code>。它检查的是三段 waypoint 路径，不改变下面表格显示的直线路径。</div>
+          <div class="mini">The automatic lift search starts from <code>h=0</code>, increases by <code>Lift step</code>, and tries up to <code>Max lift</code>. It checks a three-segment waypoint path and does not change the direct-path table below.</div>
         </div>
-        <div class="mini" style="margin-bottom:10px">每一行是一个 middle sample pose。表里的 <code>s</code> 是该步 actuator 的绝对 stroke，<code>Δprev</code> 是相对上一 middle position 需要移动的量；实际控制时这些 actuator 在同一个时间步内同步移动。</div>
+        <div class="mini" style="margin-bottom:10px">Each row is one middle sample pose. <code>s</code> is the absolute actuator stroke at that step, and <code>Δprev</code> is the move from the previous middle position. In real control, these actuators move synchronously at the same time step.</div>
         <div class="table-wrap">
           <table>
             <thead>
@@ -1474,9 +1474,9 @@
       const status = frameStatus(frame);
       el("verification-output").innerHTML = `
         <div class="check-summary">
-          <strong><span class="status-badge ${status.className}">${status.text}</span> 当前动画帧反代检查</strong>
+          <strong><span class="status-badge ${status.className}">${status.text}</span> Back-substitution check for the current animation frame</strong>
           <div class="mini">Frame ${frame.index + 1}: sample p = ${vec(frame.pose.position)}, yaw/pitch/roll = ${fmt(frame.pose.yaw)}, ${fmt(frame.pose.pitch)}, ${fmt(frame.pose.roll)}。Max |residual| = ${fmt(maxResidual)} mm。</div>
-          <div class="mini">验证规则：用程序算出的 <code>s</code> 反代 <code>m=b+s v</code>，再检查 <code>distance=||q-m||</code> 是否等于杆长或落在 chain reach 区间内。</div>
+          <div class="mini">Verification rule: substitute the computed <code>s</code> back into <code>m=b+s v</code>, then check whether <code>distance=||q-m||</code> equals the rod length or lies inside the chain reach interval.</div>
         </div>
         <div class="table-wrap">
           <table>
@@ -1573,7 +1573,7 @@
 
     function renderNumericDerivation(result) {
       if (!result.links.length) {
-        el("numeric-derivation").innerHTML = "<strong>5. 当前数值代入</strong><p>还没有 link。</p>";
+        el("numeric-derivation").innerHTML = "<strong>5. Current Numerical Substitution</strong><p>No link has been defined yet.</p>";
         return;
       }
       const transformText = result.links.map((link) => {
@@ -1593,12 +1593,12 @@ ${matrix(qH.map((value) => [value]))}`;
       const linkText = result.links.map((link) => {
         if (link.type === "fixed") {
           return `<div class="formula-card">
-            <strong>Link ${link.id}: fixed anchor 数值计算</strong>
-            <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
-            <p><code>f_${link.id} = ${vec(link.base)}</code>：固定端/anchor 的全局位置，<code>L_${link.id} = ${fmt(link.length)}</code> 是杆长。</p>
-            <p><code>e_${link.id} = ||q_${link.id} - f_${link.id}|| - L_${link.id} = ${fmt(link.residual)}</code>：长度误差 residual。</p>
-            <p><code>rod center = ${vec(link.rod.center)}</code>：连杆中心点。</p>
-            <p><code>rod axis = ${vec(link.rod.axis)}</code>：从固定端指向 sample 连接点的单位方向；<code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>。</p>
+            <strong>Link ${link.id}: fixed anchor numerical calculation</strong>
+            <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>: global position of sample attachment point ${link.id}.</p>
+            <p><code>f_${link.id} = ${vec(link.base)}</code>: global fixed anchor point. <code>L_${link.id} = ${fmt(link.length)}</code> is the rod length.</p>
+            <p><code>e_${link.id} = ||q_${link.id} - f_${link.id}|| - L_${link.id} = ${fmt(link.residual)}</code>: length residual.</p>
+            <p><code>rod center = ${vec(link.rod.center)}</code>: rod center point.</p>
+            <p><code>rod axis = ${vec(link.rod.axis)}</code>: unit direction from fixed anchor to sample attachment point. <code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>.</p>
           </div>`;
         }
         if (link.type === "chainSlider") {
@@ -1606,17 +1606,17 @@ ${matrix(qH.map((value) => [value]))}`;
             ? link.feasibleIntervals.map(([lo, hi]) => `[${fmt(lo)}, ${fmt(hi)}]`).join(" or ")
             : "none";
           return `<div class="formula-card">
-            <strong>Link ${link.id}: multi-link chain 数值计算</strong>
-            <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
-            <p><code>b_${link.id} = ${vec(link.base)}</code>：slider base 点，<code>v_${link.id} = ${vec(link.v)}</code> 是 slider 正方向单位向量。</p>
-            <p>链条杆长：<code>[${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}]</code></p>
-            <p><code>Rmin = ${fmt(link.reach.min)}</code>, <code>Rmax = ${fmt(link.reach.max)}</code>。slider 到 sample 连接点的距离必须在这个范围内。</p>
+            <strong>Link ${link.id}: multi-link chain numerical calculation</strong>
+            <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>: global position of sample attachment point ${link.id}.</p>
+            <p><code>b_${link.id} = ${vec(link.base)}</code>: slider base point. <code>v_${link.id} = ${vec(link.v)}</code> is the positive slider direction unit vector.</p>
+            <p>Chain segment lengths: <code>[${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}]</code></p>
+            <p><code>Rmin = ${fmt(link.reach.min)}</code>, <code>Rmax = ${fmt(link.reach.max)}</code>. The distance from slider to sample attachment must stay within this range.</p>
             <p><code>c_${link.id} = q_${link.id} - b_${link.id} = ${vec(link.c)}</code></p>
             <p><code>along = v^T c</code>，<code>h^2 = ||c||^2 - along^2 = ${fmt(link.h2)}</code></p>
-            <p>可行 stroke 区间：<code>${intervals}</code></p>
-            <p>选择规则：<code>${link.selectionReason}</code></p>
+            <p>Feasible stroke interval: <code>${intervals}</code></p>
+            <p>Selection rule: <code>${link.selectionReason}</code></p>
             <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.stroke)} - ${fmt(link.currentStroke)} = ${fmt(link.moveDelta)}</code></p>
-            <p>注意：多连杆链的中间折叠姿态不唯一，除非再指定每个 hinge 的旋转平面/转轴。这里输出的是等效链方向。</p>
+            <p>Note: internal folding of a multi-link chain is not unique unless each hinge plane or hinge axis is specified. The app reports the effective chain direction.</p>
           </div>`;
         }
         if (link.type === "couplerSlider") {
@@ -1626,10 +1626,10 @@ ${matrix(qH.map((value) => [value]))}`;
             `<p><code>e_${item.id}=||q_${item.id}-K_${item.id}||-L_${item.id} = ${fmt(item.distance)} - ${fmt(constraints.find((constraint) => constraint.id === item.id)?.length || 0)} = ${fmt(item.residual)}</code></p>`
           ).join("");
           return `<div class="formula-card">
-            <strong>Link ${link.id}: intermediate coupler 数值计算</strong>
-            <p><code>group = ${couplerGroupKey(link)}</code>。同一个 group 里的杆共享同一个 stroke <code>s_${couplerGroupKey(link)}</code>，所以它们是一起求解的。</p>
-            <p><code>b_${couplerGroupKey(link)} = ${vec(solution.base)}</code>：coupler slider base；<code>v_${couplerGroupKey(link)} = ${vec(solution.v)}</code>：coupler 运动方向。</p>
-            <p><code>d_${link.id} = ${vec(link.couplerOffset || [0, 0, 0])}</code>：这条杆接在 coupler 上的局部偏移点。</p>
+            <strong>Link ${link.id}: intermediate coupler numerical calculation</strong>
+            <p><code>group = ${couplerGroupKey(link)}</code>. Rods in the same group share the same stroke <code>s_${couplerGroupKey(link)}</code>, so they are solved together.</p>
+            <p><code>b_${couplerGroupKey(link)} = ${vec(solution.base)}</code>: coupler slider base. <code>v_${couplerGroupKey(link)} = ${vec(solution.v)}</code>: coupler motion direction.</p>
+            <p><code>d_${link.id} = ${vec(link.couplerOffset || [0, 0, 0])}</code>: local offset of this rod joint on the coupler.</p>
             <p><code>K_${link.id}(s)=b+s v+R_c d_${link.id}</code></p>
             <p><code>K_${link.id} = ${vec(link.couplerPoint)}</code>，<code>q_${link.id} = ${vec(link.targetJoint)}</code></p>
             <pre class="math-block">F(s) = [e_1, e_2, ...]^T
@@ -1642,14 +1642,14 @@ J^T F = ${fmt(lastIteration ? lastIteration.gradient : 0)}
 Δs    = ${fmt(lastIteration ? lastIteration.delta : 0)}</pre>
             <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.moveDelta)}</code></p>
             ${residualRows}
-            <p><code>group max |residual| = ${fmt(solution.maxResidual)}</code>。如果这个值不接近 0，说明这个目标 sample 位姿和这个 coupler 几何不完全兼容。</p>
+            <p><code>group max |residual| = ${fmt(solution.maxResidual)}</code>. If this value is not close to 0, the target sample pose is not fully compatible with the coupler geometry.</p>
           </div>`;
         }
         return `<div class="formula-card">
-          <strong>Link ${link.id}: slider 数值计算</strong>
-          <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>：sample 上第 ${link.id} 个连接点的全局位置。</p>
-          <p><code>b_${link.id} = ${vec(link.base)}</code>：slider base 点，<code>L_${link.id} = ${fmt(link.length)}</code> 是杆长，<code>v_${link.id} = ${vec(link.v)}</code> 是 slider 正方向单位向量。</p>
-          <p><code>c_${link.id} = q_${link.id} - b_${link.id} = ${vec(link.c)}</code>：从 slider base 指向 sample 连接点的向量。</p>
+          <strong>Link ${link.id}: slider numerical calculation</strong>
+          <p><code>q_${link.id} = ${vec(link.targetJoint)}</code>: global position of sample attachment point ${link.id}.</p>
+          <p><code>b_${link.id} = ${vec(link.base)}</code>: slider base point. <code>L_${link.id} = ${fmt(link.length)}</code> is rod length. <code>v_${link.id} = ${vec(link.v)}</code> is the positive slider direction unit vector.</p>
+          <p><code>c_${link.id} = q_${link.id} - b_${link.id} = ${vec(link.c)}</code>: vector from slider base to sample attachment point.</p>
           <pre class="math-block">A s^2 + B s + C = 0
 A = v^T v       = ${fmt(link.aCoeff)}
 B = -2 v^T c    = ${fmt(link.bCoeff)}
@@ -1657,18 +1657,18 @@ C = c^T c - L^2 = ${fmt(link.cCoeff)}
 D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
           <p><code>s^- = (-B - sqrt(D))/(2A) = ${fmt(link.minusStroke)}</code></p>
           <p><code>s^+ = (-B + sqrt(D))/(2A) = ${fmt(link.plusStroke)}</code></p>
-          <p>选择规则：<code>${link.selectionReason}</code></p>
+          <p>Selection rule: <code>${link.selectionReason}</code></p>
           <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.stroke)} - ${fmt(link.currentStroke)} = ${fmt(link.moveDelta)}</code></p>
-          <p><code>rod center = ${vec(link.rod.center)}</code>：连杆中心点。</p>
-          <p><code>rod axis = ${vec(link.rod.axis)}</code>：从 slider 端点指向 sample 连接点的单位方向；<code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>。</p>
+          <p><code>rod center = ${vec(link.rod.center)}</code>: rod center point.</p>
+          <p><code>rod axis = ${vec(link.rod.axis)}</code>: unit direction from slider endpoint to sample attachment point. <code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>.</p>
         </div>`;
       }).join("");
 
       el("numeric-derivation").innerHTML = `
-        <strong>5. 当前数值代入：完整 matrix 和所有 link</strong>
-        <p>平台齐次变换矩阵 <code>T=[R p; 0 1]</code>：</p>
+        <strong>5. Current Numerical Substitution: Full Matrix and All Links</strong>
+        <p>Platform homogeneous transform matrix <code>T=[R p; 0 1]</code>:</p>
         <pre class="math-block">${matrix(homogeneousT(result.pose))}</pre>
-        <p>每个 sample 连接点的全局位置由下面的矩阵乘法得到：</p>
+        <p>The global position of each sample attachment point is obtained by the following matrix multiplication:</p>
         <pre class="math-block">${transformText}</pre>
         <div class="formula-grid">${linkText}</div>
       `;

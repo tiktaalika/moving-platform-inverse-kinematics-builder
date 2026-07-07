@@ -8,13 +8,14 @@ Repository:
 
 Live web app:
 
-[https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/)
+- English: [https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html)
+- Chinese: [https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/)
 
 `IK` is short for `inverse kinematics`. The title keeps both the full term and the abbreviation so the purpose is clear to both robotics and non-robotics readers.
 
 ## Usage
 
-This is a static browser app. After cloning or downloading the repository, open `index.html` directly in a browser.
+This is a static browser app. Use `index-en.html` for the English interface or `index.html` for the Chinese interface.
 
 ## What It Solves
 
