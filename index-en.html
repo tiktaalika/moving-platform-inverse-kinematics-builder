@@ -461,20 +461,6 @@
       </div>
 
       <section class="panel block">
-        <h2 class="section-title">Target Sample Pose</h2>
-        <div class="grid-3">
-          <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
-          <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
-          <label>Target Z <input id="target-z" type="number" step="0.1" value="6"></label>
-        </div>
-        <div class="grid-3" style="margin-top:10px">
-          <label>Yaw deg <input id="target-yaw" type="number" step="1" value="0"></label>
-          <label>Pitch deg <input id="target-pitch" type="number" step="1" value="0"></label>
-          <label>Roll deg <input id="target-roll" type="number" step="1" value="0"></label>
-        </div>
-      </section>
-
-      <section class="panel block">
         <h2 class="section-title">Sample Geometry</h2>
         <div class="grid-3">
           <label>Size X <input id="sample-x" type="number" min="0.1" step="0.1" value="2"></label>
@@ -489,10 +475,7 @@
       </section>
 
       <section class="panel block">
-        <h2 class="section-title">Motion Path / Middle Positions</h2>
-        <div class="mini" style="margin-bottom:10px">
-          This section does not set the motors directly. It sets where the sample starts and where it should go. <code>Current</code> is the starting sample pose, <code>Target Sample Pose</code> is the final pose, and <code>Steps</code> is the number of path samples used for checking.
-        </div>
+        <h2 class="section-title">Current Position</h2>
         <div class="grid-3">
           <label>Current X <input id="current-x" type="number" step="0.1" value="0"></label>
           <label>Current Y <input id="current-y" type="number" step="0.1" value="0"></label>
@@ -503,11 +486,29 @@
           <label>Current pitch <input id="current-pitch" type="number" step="1" value="0"></label>
           <label>Current roll <input id="current-roll" type="number" step="1" value="0"></label>
         </div>
-        <div class="grid-2" style="margin-top:10px">
-          <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
+      </section>
+
+      <section class="panel block">
+        <h2 class="section-title">Target Position</h2>
+        <div class="grid-3">
+          <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
+          <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
+          <label>Target Z <input id="target-z" type="number" step="0.1" value="6"></label>
+        </div>
+        <div class="grid-3" style="margin-top:10px">
+          <label>Target yaw <input id="target-yaw" type="number" step="1" value="0"></label>
+          <label>Target pitch <input id="target-pitch" type="number" step="1" value="0"></label>
+          <label>Target roll <input id="target-roll" type="number" step="1" value="0"></label>
+        </div>
+      </section>
+
+      <section class="panel block">
+        <h2 class="section-title">Motion Path / Middle Positions</h2>
+        <div class="mini" style="margin-bottom:10px">
+          This section does not set the motors directly. It checks the path from <code>Current Position</code> to <code>Target Position</code>. The canvas shows both poses in global coordinates.
         </div>
         <div class="grid-2" style="margin-top:10px">
-          <label>Max lift <input id="lift-max" type="number" min="0" step="0.5" value="20"></label>
+          <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
           <label>Lift step <input id="lift-step" type="number" min="0.1" step="0.1" value="0.5"></label>
         </div>
         <div class="mini" style="margin-top:10px">The result appears in <code>Path Feasibility Check</code>. For every middle position, the app solves all actuator target strokes together and uses the previous-frame stroke to keep the solution branch continuous.</div>
@@ -586,8 +587,8 @@
           <p><code>i</code>: link index, for example A, B, or C.</p>
           <p><code>p</code>: target global position of the sample reference point.</p>
           <p><code>R</code>: target sample rotation matrix.</p>
-          <p><code>r</code>: sample reference point in the sample-local frame, usually <code>[0,0,0]</code>.</p>
-          <p><code>a_i</code>: sample-local attachment point for link i.</p>
+          <p><code>r</code>: sample reference point. The UI displays attachment points in global coordinates and converts them internally for the rigid-body equation.</p>
+          <p><code>a_i</code>: internal sample-local attachment point for link i.</p>
           <p><code>q_i</code>: target global position of sample attachment point i.</p>
           <p><code>b_i</code>: slider base point, or the reference point of the slider rail.</p>
           <p><code>v_i</code>: unit vector of the positive slider direction.</p>
@@ -606,7 +607,7 @@
         <div class="formula-grid">
           <div class="formula-card">
             <strong>1. Platform Rigid-Body Transform</strong>
-            <p>The platform target pose is <code>p,R</code>. The local attachment point is <code>a_i</code>, and the local reference point is <code>r</code>.</p>
+            <p>The platform target pose is <code>p,R</code>. The UI attachment input is global; internally it is converted to the local point <code>a_i</code> with reference point <code>r</code>.</p>
             <p><code>q_i = p + R(a_i - r)</code></p>
             <p><code>q_i</code> is the global target position of the sample-side joint for link i.</p>
             <p>Once the sample pose is fixed, every <code>q_i</code> is known. Then each independent link can solve its own actuator degree of freedom.</p>
@@ -716,6 +717,10 @@
       return matrix.map((row) => row.reduce((sum, value, index) => sum + value * vector[index], 0));
     }
 
+    function transpose3(matrix) {
+      return matrix[0].map((_, column) => matrix.map((row) => row[column]));
+    }
+
     function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
     function subtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
     function scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
@@ -802,7 +807,7 @@
             </div>
             <div class="grid-3">
               ${["x", "y", "z"].map((axis, axisIndex) => `
-                <label>Attach ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${item.attach[axisIndex]}"></label>
+                <label>Attach global ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${fmt(attachPointForInput(item)[axisIndex])}"></label>
               `).join("")}
             </div>
             <div class="grid-3">
@@ -839,7 +844,7 @@
       constraints = constraints.map((item) => ({
         ...item,
         type: el(`${item.id}-type`).value,
-        attach: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`)),
+        attach: worldPointToPlatformLocal(targetPoseFromInputs(), ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`))),
         base: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-base-${axis}`)),
         yaw: readNumber(`${item.id}-yaw`),
         pitch: readNumber(`${item.id}-pitch`),
@@ -908,6 +913,14 @@
 
     function platformPointToWorld(pose, localPoint) {
       return add(pose.position, transform(pose.rotation, subtract(localPoint, pose.reference)));
+    }
+
+    function worldPointToPlatformLocal(pose, worldPoint) {
+      return add(pose.reference, transform(transpose3(pose.rotation), subtract(worldPoint, pose.position)));
+    }
+
+    function attachPointForInput(item) {
+      return platformPointToWorld(targetPoseFromInputs(), item.attach);
     }
 
     function rodPose(start, end) {
@@ -1298,11 +1311,41 @@
         .filter((status) => status.text !== "ok");
     }
 
+    function estimateLiftSearchLimit(start, end) {
+      const topZ = Math.max(start.position[2], end.position[2]);
+      const fallback = 80;
+      const candidates = constraints.map((item) => {
+        const rotation = rotationMatrix(item.yaw, item.pitch, item.roll);
+        const axis = transform(rotation, localAxis(item.axis || "x"));
+        const reach = item.type === "chainSlider"
+          ? chainReach(parseChainLengths(item.chainLengths, item.length)).max
+          : item.length || 0;
+        if (item.type === "fixed") return (item.base?.[2] || 0) + reach;
+        if (item.type === "couplerSlider") {
+          const minS = Number.isFinite(item.strokeMin) ? item.strokeMin : -20;
+          const maxS = Number.isFinite(item.strokeMax) ? item.strokeMax : 20;
+          const offsetZ = (item.couplerOffset || [0, 0, 0])[2] || 0;
+          return Math.max(
+            (item.base?.[2] || 0) + minS * axis[2] + offsetZ + reach,
+            (item.base?.[2] || 0) + maxS * axis[2] + offsetZ + reach
+          );
+        }
+        const minS = Number.isFinite(item.strokeMin) ? item.strokeMin : -20;
+        const maxS = Number.isFinite(item.strokeMax) ? item.strokeMax : 20;
+        return Math.max(
+          (item.base?.[2] || 0) + minS * axis[2] + reach,
+          (item.base?.[2] || 0) + maxS * axis[2] + reach
+        );
+      }).filter(Number.isFinite);
+      const physicalTop = candidates.length ? Math.max(...candidates) : topZ + fallback;
+      return clamp(physicalTop - topZ + readNumber("sample-z"), 0, fallback);
+    }
+
     function calculateLiftSearch() {
       const start = currentPoseFromInputs();
       const end = targetPoseFromInputs();
-      const maxLift = Math.max(0, readNumber("lift-max"));
       const liftStep = Math.max(0.1, readNumber("lift-step"));
+      const maxLift = estimateLiftSearchLimit(start, end);
       const steps = readNumber("trajectory-steps");
       const topZ = Math.max(start.position[2], end.position[2]);
       const trials = [];
@@ -1399,7 +1442,7 @@
       const liftSummary = liftSearch.found
         ? `<strong><span class="status-badge status-ok">lift found</span> Minimum feasible lift h = ${fmt(liftSearch.trial.h)} mm.</strong>
            <div class="mini">Tested path: Current -> W1 -> W2 -> Target, where W1 = ${vec(liftSearch.trial.w1.position)} and W2 = ${vec(liftSearch.trial.w2.position)}. Search step is ${fmt(readNumber("lift-step"))} mm, so the true minimum may lie within one step.</div>`
-        : `<strong><span class="status-badge status-bad">no lift</span> No feasible lift path was found within Max lift = ${fmt(readNumber("lift-max"))} mm.</strong>
+        : `<strong><span class="status-badge status-bad">no lift</span> No feasible lift path was found within the automatic physical search limit.</strong>
            <div class="mini">This usually means the simple lift-translate-lower path is not enough, or the fixed/chain/coupler constraints are incompatible with those middle poses.</div>`;
       const rows = frames.map((frame) => {
         const commandCells = movingLinks.map((item) => {
@@ -1427,7 +1470,7 @@
         </div>
         <div class="check-summary">
           ${liftSummary}
-          <div class="mini">The automatic lift search starts from <code>h=0</code>, increases by <code>Lift step</code>, and tries up to <code>Max lift</code>. It checks a three-segment waypoint path and does not change the direct-path table below.</div>
+          <div class="mini">The automatic lift search starts from <code>h=0</code>, increases by <code>Lift step</code>, and stops at an internal limit estimated from stroke limits and link lengths. It checks a three-segment waypoint path and does not change the direct-path table below.</div>
         </div>
         <div class="mini" style="margin-bottom:10px">Each row is one middle sample pose. <code>s</code> is the absolute actuator stroke at that step, and <code>Δprev</code> is the move from the previous middle position. In real control, these actuators move synchronously at the same time step.</div>
         <div class="table-wrap">
@@ -1732,7 +1775,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       ctx.restore();
     }
 
-    function drawSample(ctx, result, rect, zoom) {
+    function drawSample(ctx, result, rect, zoom, options = {}) {
       const sx = readNumber("sample-x") / 2;
       const sy = readNumber("sample-y") / 2;
       const sz = readNumber("sample-z") / 2;
@@ -1755,8 +1798,8 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         [0, 4], [1, 5], [2, 6], [3, 7]
       ];
       ctx.save();
-      ctx.fillStyle = "rgba(23, 23, 20, 0.08)";
-      ctx.strokeStyle = "#171714";
+      ctx.fillStyle = options.fill || "rgba(23, 23, 20, 0.08)";
+      ctx.strokeStyle = options.stroke || "#171714";
       ctx.lineWidth = 2;
       faces.forEach((face) => {
         ctx.beginPath();
@@ -1765,13 +1808,17 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         ctx.closePath();
         ctx.fill();
       });
-      ctx.lineWidth = 3;
+      ctx.lineWidth = options.lineWidth || 3;
       edges.forEach(([a, b]) => {
         ctx.beginPath();
         ctx.moveTo(points[a][0], points[a][1]);
         ctx.lineTo(points[b][0], points[b][1]);
         ctx.stroke();
       });
+      if (options.label) {
+        const center = project(result.pose.position, rect.width, rect.height, zoom);
+        drawLabel(ctx, options.label, center, options.stroke || "#171714", 10, -12);
+      }
       ctx.restore();
     }
 
@@ -1806,6 +1853,10 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       drawLabel(ctx, "Y", globalY, "#555", -22, 0);
       drawLabel(ctx, "Z", globalZ, "#777", 10, -2);
 
+      const currentGhost = { pose: currentPoseFromInputs() };
+      const targetGhost = { pose: targetPoseFromInputs() };
+      drawSample(ctx, currentGhost, rect, zoom, { label: "Current", stroke: "#6f7a85", fill: "rgba(111, 122, 133, 0.06)", lineWidth: 2 });
+      drawSample(ctx, targetGhost, rect, zoom, { label: "Target", stroke: "#0e7c86", fill: "rgba(14, 124, 134, 0.08)", lineWidth: 2 });
       drawSample(ctx, result, rect, zoom);
 
       result.links.forEach((link) => {

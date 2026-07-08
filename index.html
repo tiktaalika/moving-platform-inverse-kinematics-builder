@@ -461,20 +461,6 @@
       </div>
 
       <section class="panel block">
-        <h2 class="section-title">目标 sample 位姿</h2>
-        <div class="grid-3">
-          <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
-          <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
-          <label>Target Z <input id="target-z" type="number" step="0.1" value="6"></label>
-        </div>
-        <div class="grid-3" style="margin-top:10px">
-          <label>Yaw deg <input id="target-yaw" type="number" step="1" value="0"></label>
-          <label>Pitch deg <input id="target-pitch" type="number" step="1" value="0"></label>
-          <label>Roll deg <input id="target-roll" type="number" step="1" value="0"></label>
-        </div>
-      </section>
-
-      <section class="panel block">
         <h2 class="section-title">Sample 几何</h2>
         <div class="grid-3">
           <label>Size X <input id="sample-x" type="number" min="0.1" step="0.1" value="2"></label>
@@ -489,10 +475,7 @@
       </section>
 
       <section class="panel block">
-        <h2 class="section-title">运动轨迹 / Middle positions</h2>
-        <div class="mini" style="margin-bottom:10px">
-          这里不是设置 motor 本身，而是设置 sample 从哪里开始、要去哪里。<code>Current</code> 是起点 sample 位姿；左上面的 <code>Target sample 位姿</code> 是终点；<code>Steps</code> 是把这条路切成几段来检查。
-        </div>
+        <h2 class="section-title">Current Position / 当前位姿</h2>
         <div class="grid-3">
           <label>Current X <input id="current-x" type="number" step="0.1" value="0"></label>
           <label>Current Y <input id="current-y" type="number" step="0.1" value="0"></label>
@@ -503,11 +486,29 @@
           <label>Current pitch <input id="current-pitch" type="number" step="1" value="0"></label>
           <label>Current roll <input id="current-roll" type="number" step="1" value="0"></label>
         </div>
-        <div class="grid-2" style="margin-top:10px">
-          <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
+      </section>
+
+      <section class="panel block">
+        <h2 class="section-title">Target Position / 目标位姿</h2>
+        <div class="grid-3">
+          <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
+          <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
+          <label>Target Z <input id="target-z" type="number" step="0.1" value="6"></label>
+        </div>
+        <div class="grid-3" style="margin-top:10px">
+          <label>Target yaw <input id="target-yaw" type="number" step="1" value="0"></label>
+          <label>Target pitch <input id="target-pitch" type="number" step="1" value="0"></label>
+          <label>Target roll <input id="target-roll" type="number" step="1" value="0"></label>
+        </div>
+      </section>
+
+      <section class="panel block">
+        <h2 class="section-title">运动轨迹 / Middle positions</h2>
+        <div class="mini" style="margin-bottom:10px">
+          这里不是设置 motor 本身，而是检查 sample 从 <code>Current Position</code> 到 <code>Target Position</code> 的路径。画布会同时显示 current 和 target 两个位姿，坐标都按全局坐标理解。
         </div>
         <div class="grid-2" style="margin-top:10px">
-          <label>Max lift <input id="lift-max" type="number" min="0" step="0.5" value="20"></label>
+          <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
           <label>Lift step <input id="lift-step" type="number" min="0.1" step="0.1" value="0.5"></label>
         </div>
         <div class="mini" style="margin-top:10px">检查结果在右侧 <code>Path Feasibility Check</code>。每一个 middle position 都会同时反求所有 actuator 的目标 stroke，并用上一帧 stroke 选最近解，避免跳到另一支解。</div>
@@ -716,6 +717,10 @@
       return matrix.map((row) => row.reduce((sum, value, index) => sum + value * vector[index], 0));
     }
 
+    function transpose3(matrix) {
+      return matrix[0].map((_, column) => matrix.map((row) => row[column]));
+    }
+
     function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
     function subtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
     function scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
@@ -802,7 +807,7 @@
             </div>
             <div class="grid-3">
               ${["x", "y", "z"].map((axis, axisIndex) => `
-                <label>Attach ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${item.attach[axisIndex]}"></label>
+                <label>Attach global ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${fmt(attachPointForInput(item)[axisIndex])}"></label>
               `).join("")}
             </div>
             <div class="grid-3">
@@ -839,7 +844,7 @@
       constraints = constraints.map((item) => ({
         ...item,
         type: el(`${item.id}-type`).value,
-        attach: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`)),
+        attach: worldPointToPlatformLocal(targetPoseFromInputs(), ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`))),
         base: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-base-${axis}`)),
         yaw: readNumber(`${item.id}-yaw`),
         pitch: readNumber(`${item.id}-pitch`),
@@ -908,6 +913,14 @@
 
     function platformPointToWorld(pose, localPoint) {
       return add(pose.position, transform(pose.rotation, subtract(localPoint, pose.reference)));
+    }
+
+    function worldPointToPlatformLocal(pose, worldPoint) {
+      return add(pose.reference, transform(transpose3(pose.rotation), subtract(worldPoint, pose.position)));
+    }
+
+    function attachPointForInput(item) {
+      return platformPointToWorld(targetPoseFromInputs(), item.attach);
     }
 
     function rodPose(start, end) {
@@ -1298,11 +1311,41 @@
         .filter((status) => status.text !== "ok");
     }
 
+    function estimateLiftSearchLimit(start, end) {
+      const topZ = Math.max(start.position[2], end.position[2]);
+      const fallback = 80;
+      const candidates = constraints.map((item) => {
+        const rotation = rotationMatrix(item.yaw, item.pitch, item.roll);
+        const axis = transform(rotation, localAxis(item.axis || "x"));
+        const reach = item.type === "chainSlider"
+          ? chainReach(parseChainLengths(item.chainLengths, item.length)).max
+          : item.length || 0;
+        if (item.type === "fixed") return (item.base?.[2] || 0) + reach;
+        if (item.type === "couplerSlider") {
+          const minS = Number.isFinite(item.strokeMin) ? item.strokeMin : -20;
+          const maxS = Number.isFinite(item.strokeMax) ? item.strokeMax : 20;
+          const offsetZ = (item.couplerOffset || [0, 0, 0])[2] || 0;
+          return Math.max(
+            (item.base?.[2] || 0) + minS * axis[2] + offsetZ + reach,
+            (item.base?.[2] || 0) + maxS * axis[2] + offsetZ + reach
+          );
+        }
+        const minS = Number.isFinite(item.strokeMin) ? item.strokeMin : -20;
+        const maxS = Number.isFinite(item.strokeMax) ? item.strokeMax : 20;
+        return Math.max(
+          (item.base?.[2] || 0) + minS * axis[2] + reach,
+          (item.base?.[2] || 0) + maxS * axis[2] + reach
+        );
+      }).filter(Number.isFinite);
+      const physicalTop = candidates.length ? Math.max(...candidates) : topZ + fallback;
+      return clamp(physicalTop - topZ + readNumber("sample-z"), 0, fallback);
+    }
+
     function calculateLiftSearch() {
       const start = currentPoseFromInputs();
       const end = targetPoseFromInputs();
-      const maxLift = Math.max(0, readNumber("lift-max"));
       const liftStep = Math.max(0.1, readNumber("lift-step"));
+      const maxLift = estimateLiftSearchLimit(start, end);
       const steps = readNumber("trajectory-steps");
       const topZ = Math.max(start.position[2], end.position[2]);
       const trials = [];
@@ -1399,7 +1442,7 @@
       const liftSummary = liftSearch.found
         ? `<strong><span class="status-badge status-ok">lift found</span> 最小可行抬高量 h = ${fmt(liftSearch.trial.h)} mm。</strong>
            <div class="mini">测试路径：Current -> W1 -> W2 -> Target，其中 W1 = ${vec(liftSearch.trial.w1.position)}，W2 = ${vec(liftSearch.trial.w2.position)}。搜索步长是 ${fmt(readNumber("lift-step"))} mm，所以真实最小值可能在这个步长以内。</div>`
-        : `<strong><span class="status-badge status-bad">no lift</span> 在 Max lift = ${fmt(readNumber("lift-max"))} mm 内没有找到可行抬高路径。</strong>
+        : `<strong><span class="status-badge status-bad">no lift</span> 在自动物理搜索上限内没有找到可行抬高路径。</strong>
            <div class="mini">这通常说明简单“先抬高再平移再下降”的路径不够，或者 fixed/chain 约束本身让这些中间位姿不兼容。</div>`;
       const rows = frames.map((frame) => {
         const commandCells = movingLinks.map((item) => {
@@ -1427,7 +1470,7 @@
         </div>
         <div class="check-summary">
           ${liftSummary}
-          <div class="mini">自动抬高搜索从 <code>h=0</code> 开始，每次增加 <code>Lift step</code>，一直试到 <code>Max lift</code>。它检查的是三段 waypoint 路径，不改变下面表格显示的直线路径。</div>
+          <div class="mini">自动抬高搜索从 <code>h=0</code> 开始，每次增加 <code>Lift step</code>，并根据 stroke limit 和连杆长度估算内部搜索上限。它检查的是三段 waypoint 路径，不改变下面表格显示的直线路径。</div>
         </div>
         <div class="mini" style="margin-bottom:10px">每一行是一个 middle sample pose。表里的 <code>s</code> 是该步 actuator 的绝对 stroke，<code>Δprev</code> 是相对上一 middle position 需要移动的量；实际控制时这些 actuator 在同一个时间步内同步移动。</div>
         <div class="table-wrap">
@@ -1732,7 +1775,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       ctx.restore();
     }
 
-    function drawSample(ctx, result, rect, zoom) {
+    function drawSample(ctx, result, rect, zoom, options = {}) {
       const sx = readNumber("sample-x") / 2;
       const sy = readNumber("sample-y") / 2;
       const sz = readNumber("sample-z") / 2;
@@ -1755,8 +1798,8 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         [0, 4], [1, 5], [2, 6], [3, 7]
       ];
       ctx.save();
-      ctx.fillStyle = "rgba(23, 23, 20, 0.08)";
-      ctx.strokeStyle = "#171714";
+      ctx.fillStyle = options.fill || "rgba(23, 23, 20, 0.08)";
+      ctx.strokeStyle = options.stroke || "#171714";
       ctx.lineWidth = 2;
       faces.forEach((face) => {
         ctx.beginPath();
@@ -1765,13 +1808,17 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         ctx.closePath();
         ctx.fill();
       });
-      ctx.lineWidth = 3;
+      ctx.lineWidth = options.lineWidth || 3;
       edges.forEach(([a, b]) => {
         ctx.beginPath();
         ctx.moveTo(points[a][0], points[a][1]);
         ctx.lineTo(points[b][0], points[b][1]);
         ctx.stroke();
       });
+      if (options.label) {
+        const center = project(result.pose.position, rect.width, rect.height, zoom);
+        drawLabel(ctx, options.label, center, options.stroke || "#171714", 10, -12);
+      }
       ctx.restore();
     }
 
@@ -1806,6 +1853,10 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       drawLabel(ctx, "Y", globalY, "#555", -22, 0);
       drawLabel(ctx, "Z", globalZ, "#777", 10, -2);
 
+      const currentGhost = { pose: currentPoseFromInputs() };
+      const targetGhost = { pose: targetPoseFromInputs() };
+      drawSample(ctx, currentGhost, rect, zoom, { label: "Current", stroke: "#6f7a85", fill: "rgba(111, 122, 133, 0.06)", lineWidth: 2 });
+      drawSample(ctx, targetGhost, rect, zoom, { label: "Target", stroke: "#0e7c86", fill: "rgba(14, 124, 134, 0.08)", lineWidth: 2 });
       drawSample(ctx, result, rect, zoom);
 
       result.links.forEach((link) => {
