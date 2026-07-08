@@ -1776,6 +1776,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
     }
 
     function draw() {
+      syncConstraintsFromInputs();
       const directFrames = calculateTrajectory();
       const liftSearch = calculateLiftSearch();
       const frames = animationFrames(directFrames, liftSearch);
@@ -1989,7 +1990,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
     }
 
     renderConstraints();
-    document.addEventListener("input", (event) => {
+    function handleControlChange(event) {
       if (event.target.id && event.target.id.endsWith("-type")) {
         syncConstraintsFromInputs();
         renderConstraints();
@@ -2004,7 +2005,9 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         animationState.frameIndex = 0;
       }
       draw();
-    });
+    }
+    document.addEventListener("input", handleControlChange);
+    document.addEventListener("change", handleControlChange);
     document.addEventListener("click", (event) => {
       if (event.target.id === "add-constraint") addConstraint();
       if (event.target.id === "load-example") loadExampleMechanism();
