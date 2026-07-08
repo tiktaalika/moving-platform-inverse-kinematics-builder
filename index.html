@@ -787,7 +787,7 @@
               <label>Coupler note <input id="${item.id}-coupler-note" type="text" value="${item.couplerNote || ""}" ${item.type === "couplerSlider" ? "" : "disabled"}></label>
             </div>
             <div class="grid-2">
-              <label>Current stroke <input id="${item.id}-current" type="number" step="0.1" value="${item.currentStroke || 0}" ${item.type === "fixed" ? "disabled" : ""}></label>
+              <label>Current s${item.id} <input id="${item.id}-current" type="number" step="0.1" value="${item.currentStroke || 0}" ${item.type === "fixed" ? "disabled" : ""}></label>
               <label>Solution branch
                 <select id="${item.id}-branch" ${item.type === "fixed" ? "disabled" : ""}>
                   <option value="nearest" ${item.branch === "nearest" ? "selected" : ""}>nearest current</option>
@@ -830,7 +830,7 @@
                 </select>
               </label>
             </div>
-            <div class="mini">${item.type === "fixed" ? "Fixed anchor 没有 motor command，只检查目标位姿是否满足这条固定连杆长度。" : item.type === "chainSlider" ? "Multi-link 表示中间有多根杆串联到 slider；GUI 先求 slider 可行区间，再选离 current stroke 最近的目标。" : item.type === "couplerSlider" ? "Coupler slider 表示多根杆接在同一个中间刚体连接块上；同一个 Coupler group 共享一个 stroke，用 residual matrix 一起求。" : "Current stroke 是现在滑块在轴上的绝对位置；GUI 输出 target stroke 和 move Δs = target - current。"}</div>
+            <div class="mini">${item.type === "fixed" ? "Fixed anchor 没有 motor command，只检查目标位姿是否满足这条固定连杆长度。" : item.type === "chainSlider" ? "先输入当前绝对行程 current s。给定 target pose 后，GUI 求出 target s，并报告 delta s = target s - current s。" : item.type === "couplerSlider" ? "先输入当前绝对行程 current s。同一个 Coupler group 共享一个 target s，用 residual matrix 一起求；delta s = target s - current s。" : "先输入当前滑块的绝对位置 current s。给定 target pose 后，GUI 输出 target s 和 delta s = target s - current s。"}</div>
           </div>
         </article>
       `).join("");
@@ -1442,7 +1442,7 @@
             <div class="step">
               <span class="step-index">${link.id}</span>
               <div>
-                <strong>Multi-link ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; current s${link.id} = ${fmt(link.currentStroke)} ${unit}; move Δcurrent = ${fmt(link.moveDelta)} ${unit}</strong>
+                <strong>Multi-link ${link.id}: current s${link.id} = ${fmt(link.currentStroke)} ${unit}; target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
                 <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
                 <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
                 <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
@@ -1456,7 +1456,7 @@
             <div class="step">
               <span class="step-index">${link.id}</span>
               <div>
-                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: shared target s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; current s${link.id} = ${fmt(link.currentStroke)} ${unit}; move Δcurrent = ${fmt(link.moveDelta)} ${unit}</strong>
+                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: current s${link.id} = ${fmt(link.currentStroke)} ${unit}; shared target s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
                 <div class="mini">coupler point K${link.id} = ${vec(link.couplerPoint)} ${unit}; local offset d${link.id} = ${vec(link.couplerOffset || [0, 0, 0])} ${unit}</div>
                 <div class="mini">rod length residual = ${fmt(link.residual)} ${unit}; group max residual = ${fmt(link.couplerSolution.maxResidual)} ${unit}</div>
                 <div class="mini">matrix solve: ${link.couplerSolution.selectionReason}</div>
@@ -1470,7 +1470,7 @@
           <div class="step">
             <span class="step-index">${link.id}</span>
             <div>
-              <strong>Slider ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; current s${link.id} = ${fmt(link.currentStroke)} ${unit}; move Δcurrent = ${fmt(link.moveDelta)} ${unit}</strong>
+              <strong>Slider ${link.id}: current s${link.id} = ${fmt(link.currentStroke)} ${unit}; target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
               <div class="mini">two roots: minus = ${fmt(link.minusStroke)} ${unit}, plus = ${fmt(link.plusStroke)} ${unit}</div>
               <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}; length error residual = ${fmt(link.residual)} ${unit}</div>
               <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
