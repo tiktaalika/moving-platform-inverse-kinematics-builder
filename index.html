@@ -522,7 +522,7 @@
             <button id="add-constraint" type="button">Add link</button>
           </div>
         </div>
-        <div class="mini">每条 link 都从 sample 上的局部连接点 <code>a_i</code> 出发，另一端可以是 slider、fixed anchor，或一个中间刚体 coupler 上的铰点。Coupler 适合表示图里那种黄色中间连接块：多根杆共享同一个 motor-side 运动。</div>
+        <div class="mini">每条 link 都从 sample 自己坐标系里的局部连接点 <code>a_i</code> 出发；它在全局坐标里的位置 <code>q_i</code> 会由 current/target sample 位姿算出来，所以同一个物理连接点会跟着 sample 移动。另一端可以是 slider、fixed anchor，或一个中间刚体 coupler 上的铰点。</div>
       </section>
 
       <section id="constraints"></section>
@@ -717,10 +717,6 @@
       return matrix.map((row) => row.reduce((sum, value, index) => sum + value * vector[index], 0));
     }
 
-    function transpose3(matrix) {
-      return matrix[0].map((_, column) => matrix.map((row) => row[column]));
-    }
-
     function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
     function subtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
     function scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
@@ -807,7 +803,7 @@
             </div>
             <div class="grid-3">
               ${["x", "y", "z"].map((axis, axisIndex) => `
-                <label>Attach global ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${fmt(attachPointForInput(item)[axisIndex])}"></label>
+                <label>Attach local ${axis.toUpperCase()} <input id="${item.id}-attach-${axis}" type="number" step="0.1" value="${item.attach[axisIndex]}"></label>
               `).join("")}
             </div>
             <div class="grid-3">
@@ -844,7 +840,7 @@
       constraints = constraints.map((item) => ({
         ...item,
         type: el(`${item.id}-type`).value,
-        attach: worldPointToPlatformLocal(targetPoseFromInputs(), ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`))),
+        attach: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-attach-${axis}`)),
         base: ["x", "y", "z"].map((axis) => readNumber(`${item.id}-base-${axis}`)),
         yaw: readNumber(`${item.id}-yaw`),
         pitch: readNumber(`${item.id}-pitch`),
@@ -913,14 +909,6 @@
 
     function platformPointToWorld(pose, localPoint) {
       return add(pose.position, transform(pose.rotation, subtract(localPoint, pose.reference)));
-    }
-
-    function worldPointToPlatformLocal(pose, worldPoint) {
-      return add(pose.reference, transform(transpose3(pose.rotation), subtract(worldPoint, pose.position)));
-    }
-
-    function attachPointForInput(item) {
-      return platformPointToWorld(targetPoseFromInputs(), item.attach);
     }
 
     function rodPose(start, end) {
@@ -1853,10 +1841,6 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       drawLabel(ctx, "Y", globalY, "#555", -22, 0);
       drawLabel(ctx, "Z", globalZ, "#777", 10, -2);
 
-      const currentGhost = { pose: currentPoseFromInputs() };
-      const targetGhost = { pose: targetPoseFromInputs() };
-      drawSample(ctx, currentGhost, rect, zoom, { label: "Current", stroke: "#6f7a85", fill: "rgba(111, 122, 133, 0.06)", lineWidth: 2 });
-      drawSample(ctx, targetGhost, rect, zoom, { label: "Target", stroke: "#0e7c86", fill: "rgba(14, 124, 134, 0.08)", lineWidth: 2 });
       drawSample(ctx, result, rect, zoom);
 
       result.links.forEach((link) => {
