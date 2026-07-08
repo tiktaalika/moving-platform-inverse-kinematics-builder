@@ -479,7 +479,7 @@
         <div class="grid-3">
           <label>Current X <input id="current-x" type="number" step="0.1" value="0"></label>
           <label>Current Y <input id="current-y" type="number" step="0.1" value="0"></label>
-          <label>Current Z <input id="current-z" type="number" step="0.1" value="6"></label>
+          <label>Current Z <input id="current-z" type="number" step="0.1" value="0"></label>
         </div>
         <div class="grid-3" style="margin-top:10px">
           <label>Current yaw <input id="current-yaw" type="number" step="1" value="0"></label>
@@ -493,7 +493,7 @@
         <div class="grid-3">
           <label>Target X <input id="target-x" type="number" step="0.1" value="0"></label>
           <label>Target Y <input id="target-y" type="number" step="0.1" value="0"></label>
-          <label>Target Z <input id="target-z" type="number" step="0.1" value="6"></label>
+          <label>Target Z <input id="target-z" type="number" step="0.1" value="0"></label>
         </div>
         <div class="grid-3" style="margin-top:10px">
           <label>Target yaw <input id="target-yaw" type="number" step="1" value="0"></label>
@@ -518,7 +518,6 @@
         <div class="toolbar">
           <h2 class="section-title" style="margin:0">连接/约束</h2>
           <div style="display:flex; gap:8px; flex-wrap:wrap">
-            <button id="load-example" class="secondary" type="button">Load example mechanism</button>
             <button id="add-constraint" type="button">Add link</button>
           </div>
         </div>
@@ -682,11 +681,7 @@
 
   <script>
     const colors = ["#0e7c86", "#c84c2f", "#8b6f12", "#5a6fb0", "#6b8f38", "#a64b7a"];
-    let constraints = [
-      { id: "A", type: "chainSlider", color: colors[0], attach: [-1, -1, -1], base: [-4, -2, 6], yaw: 0, pitch: 0, roll: 0, axis: "x", length: 2.5, chainLengths: "1.2, 1.3", currentStroke: 1, strokeMin: -20, strokeMax: 20, branch: "nearest" },
-      { id: "B", type: "slider", color: colors[1], attach: [1, -1, -1], base: [4, -2, 6], yaw: 180, pitch: 0, roll: 0, axis: "x", length: 2.5, currentStroke: 1, strokeMin: -20, strokeMax: 20, branch: "nearest" },
-      { id: "C", type: "fixed", color: colors[2], attach: [0, 1, 1], base: [0, 4, 6.5], yaw: 0, pitch: 0, roll: 0, axis: "x", length: 3.04, branch: "minus" }
-    ];
+    let constraints = [];
 
     const el = (id) => document.getElementById(id);
     const readNumber = (id) => Number.parseFloat(el(id).value) || 0;
@@ -2012,118 +2007,6 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       draw();
     }
 
-    function setInputValue(id, value) {
-      el(id).value = value;
-    }
-
-    function loadExampleMechanism() {
-      setInputValue("target-x", 0);
-      setInputValue("target-y", 0);
-      setInputValue("target-z", 2);
-      setInputValue("target-yaw", 0);
-      setInputValue("target-pitch", 0);
-      setInputValue("target-roll", 0);
-      setInputValue("current-x", 0);
-      setInputValue("current-y", 0);
-      setInputValue("current-z", 2);
-      setInputValue("current-yaw", 0);
-      setInputValue("current-pitch", 0);
-      setInputValue("current-roll", 0);
-      setInputValue("sample-x", 7.2);
-      setInputValue("sample-y", 5.4);
-      setInputValue("sample-z", 0.4);
-      setInputValue("ref-x", 0);
-      setInputValue("ref-y", 0);
-      setInputValue("ref-z", 0);
-
-      constraints = [
-        {
-          id: "A",
-          type: "couplerSlider",
-          color: colors[0],
-          attach: [-3.6, 2.2, 0],
-          base: [-9.5, 3.4, 0.2],
-          yaw: 4,
-          pitch: 0,
-          roll: 0,
-          axis: "x",
-          length: 3.6,
-          chainLengths: "1.4, 1.2, 1.0",
-          couplerGroup: "Ktop",
-          couplerOffset: [0, 0.7, 0],
-          couplerNote: "upper rod on shared motor-side bracket",
-          currentStroke: 10,
-          strokeMin: -20,
-          strokeMax: 25,
-          branch: "nearest"
-        },
-        {
-          id: "B",
-          type: "couplerSlider",
-          color: colors[1],
-          attach: [-3.6, 0.2, 0],
-          base: [-9.5, 3.4, 0.2],
-          yaw: 4,
-          pitch: 0,
-          roll: 0,
-          axis: "x",
-          length: 3.4,
-          chainLengths: "1.7, 1.7",
-          couplerGroup: "Ktop",
-          couplerOffset: [0, -0.7, 0],
-          couplerNote: "lower rod on same shared bracket",
-          currentStroke: 10,
-          strokeMin: -20,
-          strokeMax: 25,
-          branch: "nearest"
-        },
-        {
-          id: "C",
-          type: "fixed",
-          color: colors[2],
-          attach: [-3.6, -2.4, 0],
-          base: [-4.5, -6.5, -0.2],
-          yaw: 0,
-          pitch: 0,
-          roll: 0,
-          axis: "x",
-          length: 4.2,
-          branch: "minus"
-        },
-        {
-          id: "D",
-          type: "fixed",
-          color: colors[3],
-          attach: [3.6, -2.4, 0],
-          base: [5.8, -6.2, -0.2],
-          yaw: 0,
-          pitch: 0,
-          roll: 0,
-          axis: "x",
-          length: 4.4,
-          branch: "minus"
-        },
-        {
-          id: "E",
-          type: "fixed",
-          color: colors[4],
-          attach: [3.6, 2.4, 0],
-          base: [7.2, 0.2, 0.1],
-          yaw: 0,
-          pitch: 0,
-          roll: 0,
-          axis: "x",
-          length: 4.1,
-          branch: "minus"
-        }
-      ];
-      viewState.yaw = -0.15;
-      viewState.pitch = 0.95;
-      viewState.zoom = 22;
-      renderConstraints();
-      draw();
-    }
-
     renderConstraints();
     function handleControlChange(event) {
       if (event.target.id && event.target.id.endsWith("-type")) {
@@ -2153,7 +2036,6 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
     document.addEventListener("change", handleControlChange);
     document.addEventListener("click", (event) => {
       if (event.target.id === "add-constraint") addConstraint();
-      if (event.target.id === "load-example") loadExampleMechanism();
       if (event.target.id === "anim-play") {
         if (animationState.playing) {
           stopAnimation();
