@@ -787,7 +787,7 @@
               <label>Coupler note <input id="${item.id}-coupler-note" type="text" value="${item.couplerNote || ""}" ${item.type === "couplerSlider" ? "" : "disabled"}></label>
             </div>
             <div class="grid-2">
-              <label>Current s${item.id} <input id="${item.id}-current" type="number" step="0.1" value="${item.currentStroke || 0}" ${item.type === "fixed" ? "disabled" : ""}></label>
+              <label>Branch hint s${item.id} <input id="${item.id}-current" type="number" step="0.1" value="${item.currentStroke || 0}" ${item.type === "fixed" ? "disabled" : ""}></label>
               <label>Solution branch
                 <select id="${item.id}-branch" ${item.type === "fixed" ? "disabled" : ""}>
                   <option value="nearest" ${item.branch === "nearest" ? "selected" : ""}>nearest current</option>
@@ -830,7 +830,7 @@
                 </select>
               </label>
             </div>
-            <div class="mini">${item.type === "fixed" ? "A fixed anchor has no motor command. It only checks whether the target pose satisfies this fixed rod length." : item.type === "chainSlider" ? "Set the present absolute stroke current s first. After the target pose is given, the GUI solves target s and reports delta s = target s - current s." : item.type === "couplerSlider" ? "Set the present absolute stroke current s first. A coupler group shares one target s, solved with a residual matrix; delta s = target s - current s." : "Set the present absolute slider position current s first. After the target pose is given, the GUI outputs target s and delta s = target s - current s."}</div>
+            <div class="mini">${item.type === "fixed" ? "A fixed anchor has no motor command. It only checks whether the target pose satisfies this fixed rod length." : item.type === "chainSlider" ? "This value is only a branch hint. The displayed current s is solved from Current Sample Pose; after target pose is given, delta s = target s - current s." : item.type === "couplerSlider" ? "This value is only a branch hint for the shared coupler stroke. The displayed current s is solved from Current Sample Pose; delta s = target s - current s." : "This value is only a branch hint for choosing the nearest root. The displayed current s is solved from Current Sample Pose; delta s = target s - current s."}</div>
           </div>
         </article>
       `).join("");
@@ -1002,7 +1002,7 @@
       return solutions;
     }
 
-    function calculateIK(poseOverride = null, previousStrokes = null, shouldSync = true) {
+    function calculateIK(poseOverride = null, previousStrokes = null, shouldSync = true, commandBaselineStrokes = null) {
       if (shouldSync) syncConstraintsFromInputs();
       const pose = poseOverride || targetPoseFromInputs();
       const couplerSolutions = solveCouplerGroups(pose, previousStrokes);
@@ -1012,6 +1012,9 @@
         const c = subtract(targetJoint, item.base);
         const referenceStroke = previousStrokes && Number.isFinite(previousStrokes[item.id])
           ? previousStrokes[item.id]
+          : item.currentStroke;
+        const commandCurrentStroke = commandBaselineStrokes && Number.isFinite(commandBaselineStrokes[item.id])
+          ? commandBaselineStrokes[item.id]
           : item.currentStroke;
         if (item.type === "fixed") {
           const residual = length(c) - item.length;
@@ -1025,7 +1028,7 @@
           const couplerPoint = add(add(solution.base, scale(solution.v, solution.stroke)), offset);
           const distance = length(subtract(targetJoint, couplerPoint));
           const residual = distance - item.length;
-          const moveDelta = Number.isFinite(solution.stroke) ? solution.stroke - item.currentStroke : Number.NaN;
+          const moveDelta = Number.isFinite(solution.stroke) ? solution.stroke - commandCurrentStroke : Number.NaN;
           const stepDelta = Number.isFinite(solution.stroke) ? solution.stroke - referenceStroke : Number.NaN;
           const rod = rodPose(couplerPoint, targetJoint);
           return {
@@ -1036,6 +1039,7 @@
             v: solution.v,
             stroke: solution.stroke,
             moveDelta,
+            commandCurrentStroke,
             stepDelta,
             referenceStroke,
             sliderPoint: add(solution.base, scale(solution.v, solution.stroke)),
@@ -1067,7 +1071,7 @@
             }
           }
           const stroke = intervals.length ? clampToIntervals(referenceStroke, intervals) : Number.NaN;
-          const moveDelta = Number.isFinite(stroke) ? stroke - item.currentStroke : Number.NaN;
+          const moveDelta = Number.isFinite(stroke) ? stroke - commandCurrentStroke : Number.NaN;
           const stepDelta = Number.isFinite(stroke) ? stroke - referenceStroke : Number.NaN;
           const sliderPoint = Number.isFinite(stroke) ? add(item.base, scale(v, stroke)) : item.base;
           const distance = length(subtract(targetJoint, sliderPoint));
@@ -1085,6 +1089,7 @@
             feasibleIntervals: intervals,
             stroke,
             moveDelta,
+            commandCurrentStroke,
             stepDelta,
             referenceStroke,
             sliderPoint,
@@ -1120,7 +1125,7 @@
           stroke = positiveCandidates.length ? Math.min(...positiveCandidates) : minusStroke;
           selectionReason = positiveCandidates.length ? "smallest non-negative root" : "no non-negative root; fallback to minus";
         }
-        const moveDelta = Number.isFinite(stroke) ? stroke - item.currentStroke : Number.NaN;
+        const moveDelta = Number.isFinite(stroke) ? stroke - commandCurrentStroke : Number.NaN;
         const stepDelta = Number.isFinite(stroke) ? stroke - referenceStroke : Number.NaN;
         const sliderPoint = Number.isFinite(stroke) ? add(item.base, scale(v, stroke)) : item.base;
         const residual = Number.isFinite(stroke) ? length(subtract(targetJoint, sliderPoint)) - item.length : Number.NaN;
@@ -1137,6 +1142,7 @@
           cCoeff,
           stroke,
           moveDelta,
+          commandCurrentStroke,
           stepDelta,
           referenceStroke,
           sliderPoint,
@@ -1153,10 +1159,14 @@
 
     function calculateTrajectoryFromWaypoints(waypoints, stepsPerSegment) {
       const steps = clamp(Math.round(stepsPerSegment) || 2, 2, 80);
+      const currentResult = calculateIK(waypoints[0], null, false);
       const previous = {};
-      constraints.forEach((item) => {
-        previous[item.id] = item.currentStroke || 0;
+      currentResult.links.forEach((link) => {
+        if (link.type !== "fixed") {
+          previous[link.id] = Number.isFinite(link.stroke) ? link.stroke : link.currentStroke || 0;
+        }
       });
+      const commandBaseline = { ...previous };
       const frames = [];
       for (let segment = 0; segment < waypoints.length - 1; segment += 1) {
         const start = waypoints[segment];
@@ -1165,7 +1175,7 @@
           if (segment > 0 && localIndex === 0) continue;
           const t = steps === 1 ? 1 : localIndex / (steps - 1);
           const pose = interpolatePose(start, end, t);
-          const result = calculateIK(pose, previous, false);
+          const result = calculateIK(pose, previous, false, commandBaseline);
           const commands = {};
           result.links.forEach((link) => {
             if (link.type !== "fixed" && Number.isFinite(link.stroke)) {
@@ -1253,6 +1263,10 @@
     function frameFailureExplanations(frame) {
       if (!frame) return [];
       return frame.result.links.map(linkFailureExplanation).filter(Boolean);
+    }
+
+    function commandCurrent(link) {
+      return Number.isFinite(link.commandCurrentStroke) ? link.commandCurrentStroke : link.currentStroke;
     }
 
     function frameStatus(frame) {
@@ -1416,8 +1430,8 @@
       const unit = "mm";
       const reasons = result.links.map(linkFailureExplanation).filter(Boolean);
       const overall = reasons.length
-        ? `<div class="check-summary"><strong><span class="status-badge status-bad">cannot reach</span> Target pose fails because at least one link constraint fails.</strong><div class="mini">The platform pose is valid only when every link is valid at the same time. Passing A alone is not enough if B fails.</div></div>`
-        : `<div class="check-summary"><strong><span class="status-badge status-ok">reachable</span> Target pose passes the current geometric checks.</strong><div class="mini">All links have finite strokes and pass the length/range back-substitution checks.</div></div>`;
+        ? `<div class="check-summary"><strong><span class="status-badge status-bad">cannot reach</span> The selected/previewed sample pose fails because at least one link constraint fails.</strong><div class="mini">The platform pose is valid only when every link is valid at the same time. Passing A alone is not enough if B fails.</div></div>`
+        : `<div class="check-summary"><strong><span class="status-badge status-ok">reachable</span> The selected/previewed sample pose passes the current geometric checks.</strong><div class="mini">All links have finite strokes and pass the length/range back-substitution checks.</div></div>`;
       el("ik-output").innerHTML = `${overall}${result.links.map((link) => {
         const reason = linkFailureExplanation(link);
         const reasonHtml = reason ? `<div class="mini"><strong>Why this link fails:</strong> ${reason}</div>` : "";
@@ -1442,7 +1456,7 @@
             <div class="step">
               <span class="step-index">${link.id}</span>
               <div>
-                <strong>Multi-link ${link.id}: current s${link.id} = ${fmt(link.currentStroke)} ${unit}; target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
+                <strong>Multi-link ${link.id}: current s${link.id} = ${fmt(commandCurrent(link))} ${unit}; target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
                 <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
                 <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
                 <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
@@ -1456,7 +1470,7 @@
             <div class="step">
               <span class="step-index">${link.id}</span>
               <div>
-                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: current s${link.id} = ${fmt(link.currentStroke)} ${unit}; shared target s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
+                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: current s${link.id} = ${fmt(commandCurrent(link))} ${unit}; shared target s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
                 <div class="mini">coupler point K${link.id} = ${vec(link.couplerPoint)} ${unit}; local offset d${link.id} = ${vec(link.couplerOffset || [0, 0, 0])} ${unit}</div>
                 <div class="mini">rod length residual = ${fmt(link.residual)} ${unit}; group max residual = ${fmt(link.couplerSolution.maxResidual)} ${unit}</div>
                 <div class="mini">matrix solve: ${link.couplerSolution.selectionReason}</div>
@@ -1470,7 +1484,7 @@
           <div class="step">
             <span class="step-index">${link.id}</span>
             <div>
-              <strong>Slider ${link.id}: current s${link.id} = ${fmt(link.currentStroke)} ${unit}; target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
+              <strong>Slider ${link.id}: current s${link.id} = ${fmt(commandCurrent(link))} ${unit}; target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; delta s${link.id} = ${fmt(link.moveDelta)} ${unit}</strong>
               <div class="mini">two roots: minus = ${fmt(link.minusStroke)} ${unit}, plus = ${fmt(link.plusStroke)} ${unit}</div>
               <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}; length error residual = ${fmt(link.residual)} ${unit}</div>
               <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
@@ -1729,7 +1743,7 @@ ${matrix(qH.map((value) => [value]))}`;
             <p><code>along = v^T c</code>，<code>h^2 = ||c||^2 - along^2 = ${fmt(link.h2)}</code></p>
             <p>Feasible stroke interval: <code>${intervals}</code></p>
             <p>Selection rule: <code>${link.selectionReason}</code></p>
-            <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.stroke)} - ${fmt(link.currentStroke)} = ${fmt(link.moveDelta)}</code></p>
+            <p><code>s_current = ${fmt(commandCurrent(link))}</code> is solved from Current Sample Pose. <code>s_target = ${fmt(link.stroke)}</code>, so <code>delta s = ${fmt(link.stroke)} - ${fmt(commandCurrent(link))} = ${fmt(link.moveDelta)}</code></p>
             <p>Note: internal folding of a multi-link chain is not unique unless each hinge plane or hinge axis is specified. The app reports the effective chain direction.</p>
           </div>`;
         }
@@ -1754,7 +1768,7 @@ last iteration:
 J^T J = ${fmt(lastIteration ? lastIteration.normal : 0)}
 J^T F = ${fmt(lastIteration ? lastIteration.gradient : 0)}
 Δs    = ${fmt(lastIteration ? lastIteration.delta : 0)}</pre>
-            <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.moveDelta)}</code></p>
+            <p><code>s_current = ${fmt(commandCurrent(link))}</code> is solved from Current Sample Pose. <code>s_target = ${fmt(link.stroke)}</code>, so <code>delta s = ${fmt(link.moveDelta)}</code></p>
             ${residualRows}
             <p><code>group max |residual| = ${fmt(solution.maxResidual)}</code>. If this value is not close to 0, the target sample pose is not fully compatible with the coupler geometry.</p>
           </div>`;
@@ -1772,7 +1786,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
           <p><code>s^- = (-B - sqrt(D))/(2A) = ${fmt(link.minusStroke)}</code></p>
           <p><code>s^+ = (-B + sqrt(D))/(2A) = ${fmt(link.plusStroke)}</code></p>
           <p>Selection rule: <code>${link.selectionReason}</code></p>
-          <p><code>s_target = ${fmt(link.stroke)}</code>, <code>s_current = ${fmt(link.currentStroke)}</code>, <code>Δs = ${fmt(link.stroke)} - ${fmt(link.currentStroke)} = ${fmt(link.moveDelta)}</code></p>
+          <p><code>s_current = ${fmt(commandCurrent(link))}</code> is solved from Current Sample Pose. <code>s_target = ${fmt(link.stroke)}</code>, so <code>delta s = ${fmt(link.stroke)} - ${fmt(commandCurrent(link))} = ${fmt(link.moveDelta)}</code></p>
           <p><code>rod center = ${vec(link.rod.center)}</code>: rod center point.</p>
           <p><code>rod axis = ${vec(link.rod.axis)}</code>: unit direction from slider endpoint to sample attachment point. <code>yaw = ${fmt(link.rod.yaw)} deg</code>, <code>pitch = ${fmt(link.rod.pitch)} deg</code>.</p>
         </div>`;
@@ -2121,6 +2135,13 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         animationState.previewTarget = false;
         stopAnimation();
       } else if (event.target.id === "anim-path") {
+        stopAnimation();
+        animationState.previewTarget = true;
+      } else if (event.target.id && event.target.id.startsWith("current-")) {
+        stopAnimation();
+        animationState.previewTarget = false;
+        animationState.frameIndex = 0;
+      } else if (event.target.id && event.target.id.startsWith("target-")) {
         stopAnimation();
         animationState.previewTarget = true;
       } else if (!event.target.id || !event.target.id.startsWith("anim-")) {
