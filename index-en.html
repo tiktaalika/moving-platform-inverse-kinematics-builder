@@ -1442,7 +1442,7 @@
             <div class="step">
               <span class="step-index">${link.id}</span>
               <div>
-                <strong>Multi-link ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; move Δs = ${fmt(link.moveDelta)} ${unit}</strong>
+                <strong>Multi-link ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; current s${link.id} = ${fmt(link.currentStroke)} ${unit}; move Δcurrent = ${fmt(link.moveDelta)} ${unit}</strong>
                 <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
                 <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
                 <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
@@ -1456,7 +1456,7 @@
             <div class="step">
               <span class="step-index">${link.id}</span>
               <div>
-                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: shared s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; move Δs = ${fmt(link.moveDelta)} ${unit}</strong>
+                <strong>Coupler ${couplerGroupKey(link)} / Link ${link.id}: shared target s = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; current s${link.id} = ${fmt(link.currentStroke)} ${unit}; move Δcurrent = ${fmt(link.moveDelta)} ${unit}</strong>
                 <div class="mini">coupler point K${link.id} = ${vec(link.couplerPoint)} ${unit}; local offset d${link.id} = ${vec(link.couplerOffset || [0, 0, 0])} ${unit}</div>
                 <div class="mini">rod length residual = ${fmt(link.residual)} ${unit}; group max residual = ${fmt(link.couplerSolution.maxResidual)} ${unit}</div>
                 <div class="mini">matrix solve: ${link.couplerSolution.selectionReason}</div>
@@ -1470,7 +1470,7 @@
           <div class="step">
             <span class="step-index">${link.id}</span>
             <div>
-              <strong>Slider ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; move Δs = ${fmt(link.moveDelta)} ${unit}</strong>
+              <strong>Slider ${link.id}: target s${link.id} = ${Number.isFinite(link.stroke) ? fmt(link.stroke) : "unreachable"} ${unit}; current s${link.id} = ${fmt(link.currentStroke)} ${unit}; move Δcurrent = ${fmt(link.moveDelta)} ${unit}</strong>
               <div class="mini">two roots: minus = ${fmt(link.minusStroke)} ${unit}, plus = ${fmt(link.plusStroke)} ${unit}</div>
               <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}; length error residual = ${fmt(link.residual)} ${unit}</div>
               <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
