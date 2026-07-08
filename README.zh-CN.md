@@ -17,13 +17,21 @@ GitHub 仓库：
 
 这是一个静态网页工具。中文版是 `index.html`，英文版是 `index-en.html`。
 
+网页默认从空白机构开始：
+
+- `Current Position = [0, 0, 0]`
+- `Target Position = [0, 0, 0]`
+- 默认没有任何 link
+
+使用 **Add link** 从零开始搭建机构。当前公开版本里没有内置示例机构按钮。
+
 ## 它解决什么问题
 
-给定 sample/platform 的目标位姿：
+给定 sample/platform 的当前位姿和目标位姿：
 
 ```text
-p = [x, y, z]
-R = yaw/pitch/roll 旋转矩阵
+p_current, R_current
+p_target,  R_target
 ```
 
 程序先计算 sample 上每个连接点的全局位置：
@@ -32,12 +40,22 @@ R = yaw/pitch/roll 旋转矩阵
 q_i = p + R(a_i - r)
 ```
 
+程序会分别由当前位姿和目标位姿反算 actuator stroke：
+
+```text
+current s_i = IK(Current Pose)
+target  s_i = IK(Target Pose)
+delta   s_i = target s_i - current s_i
+```
+
 然后分别求每条 link：
 
 - `1D slider`：用二次方程解析求 actuator stroke。
 - `multi-link to slider`：用 chain reach 求可行 stroke 区间。
 - `intermediate coupler slider`：多根杆共享同一个 motor-side 中间刚体连接块 stroke，用 residual/Jacobian matrix 一起求解。
 - `fixed anchor`：不输出 motor command，只检查 residual。
+
+每条 link 里的 **Branch hint s** 不是结果里显示的物理 current stroke。它只是在二次方程有多个根时用于选择分支的参考值；真正显示的 `current s_i` 是由 `Current Position` 反算出来的。
 
 ## 路径检查
 

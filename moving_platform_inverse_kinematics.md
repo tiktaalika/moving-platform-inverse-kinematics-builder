@@ -255,7 +255,7 @@ This is the analytical inverse kinematics solution for a motor that can command 
 
 ## 5. Case B: Slider Plus Fixed-Length Rod
 
-The example mechanism is a moving platform connected by rods or links. In that model, the motor does not place the joint freely in XYZ. Instead, a slider moves along one known axis and a rod of fixed length connects the slider point to the platform attachment point.
+In the slider-rod model, the moving platform is connected by rods or links. The motor does not place the joint freely in XYZ. Instead, a slider moves along one known axis and a rod of fixed length connects the slider point to the platform attachment point.
 
 Let the slider position be:
 
@@ -516,6 +516,16 @@ Then each slider stroke is obtained from one scalar quadratic equation:
 ```text
 A_i s_i^2 + B_i s_i + C_i = 0
 ```
+
+For control, the app performs this solve twice:
+
+```text
+s_i,current = IK(Current Pose)
+s_i,target  = IK(Target Pose)
+delta s_i   = s_i,target - s_i,current
+```
+
+`s_i,current` is not assumed to be zero. It is recomputed from the current sample pose using the same inverse-kinematics equations. The per-link `Branch hint s_i` value in the GUI is only a root-selection hint when more than one stroke satisfies the same geometry; it is not the reported current actuator command.
 
 ### Problem 2: Unknown Platform Pose, Solve Pose From Constraints
 

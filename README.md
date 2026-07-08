@@ -17,13 +17,21 @@ Live web app:
 
 This is a static browser app. Use `index-en.html` for the English interface or `index.html` for the Chinese interface.
 
+The app starts with an empty mechanism:
+
+- `Current Position = [0, 0, 0]`
+- `Target Position = [0, 0, 0]`
+- no links are defined by default
+
+Use **Add link** to build the mechanism from scratch. The current public version does not include a built-in sample-mechanism button.
+
 ## What It Solves
 
-Given a target sample pose:
+Given a current sample pose and a target sample pose:
 
 ```text
-p = [x, y, z]
-R = yaw/pitch/roll rotation
+p_current, R_current
+p_target,  R_target
 ```
 
 the app computes each sample attachment point:
@@ -32,12 +40,22 @@ the app computes each sample attachment point:
 q_i = p + R(a_i - r)
 ```
 
-Then it solves each link:
+It solves the current stroke from the current pose and the target stroke from the target pose:
+
+```text
+current s_i = IK(Current Pose)
+target  s_i = IK(Target Pose)
+delta   s_i = target s_i - current s_i
+```
+
+Then it solves each link type:
 
 - `1D slider`: analytic quadratic solution for the actuator stroke.
 - `multi-link to slider`: feasible stroke interval from chain reach.
 - `intermediate coupler slider`: several rods share one motor-side rigid coupler stroke and are solved together with a residual/Jacobian matrix.
 - `fixed anchor`: constraint residual check.
+
+The per-link **Branch hint s** input is not the physical current stroke reported in the result. It is only a branch-selection hint when a slider equation has multiple valid roots. The displayed `current s_i` is solved from `Current Position`.
 
 ## Path Check
 
