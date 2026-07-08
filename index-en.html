@@ -692,7 +692,7 @@
     const readNumber = (id) => Number.parseFloat(el(id).value) || 0;
     const toRad = (deg) => deg * Math.PI / 180;
     const viewState = { yaw: -0.72, pitch: 0.82, zoom: 16, dragging: false, lastX: 0, lastY: 0 };
-    const animationState = { playing: false, frameIndex: 0, lastTime: 0, rafId: null };
+    const animationState = { playing: false, frameIndex: 0, lastTime: 0, rafId: null, previewTarget: true };
 
     function rotationMatrix(yawDeg, pitchDeg, rollDeg) {
       const yaw = toRad(yawDeg);
@@ -1196,15 +1196,75 @@
       return calculateTrajectoryFromWaypoints([start, end], readNumber("trajectory-steps"));
     }
 
+    function strokeRangeText(link) {
+      return `[${fmt(link.strokeMin)}, ${fmt(link.strokeMax)}]`;
+    }
+
+    function linkFailureExplanation(link) {
+      if (link.type === "fixed") {
+        const distance = length(subtract(link.targetJoint, link.base));
+        const residual = distance - link.length;
+        if (Math.abs(residual) <= 0.01) return "";
+        return `Fixed ${link.id}: q=${vec(link.targetJoint)}, fixed point f=${vec(link.base)}. Distance ||q-f||=${fmt(distance)} mm, required L=${fmt(link.length)} mm, so residual=${fmt(residual)} mm. A fixed rod cannot change length, so this pose fails.`;
+      }
+      if (link.type === "chainSlider") {
+        const h = Math.sqrt(link.h2 || 0);
+        if (!link.feasibleIntervals.length) {
+          return `Link ${link.id}: q=${vec(link.targetJoint)}, slider base b=${vec(link.base)}, axis v=${vec(link.v)}. Projection along the slider is a=(q-b) dot v=${fmt(dot(link.c, link.v))} mm and perpendicular distance is h=sqrt(||q-b||^2-a^2)=${fmt(h)} mm. Chain reach is [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] mm. Because h is larger than the maximum reach, no slider stroke can place the chain close enough to q.`;
+        }
+        if (Number.isFinite(link.stroke) && (link.stroke < link.strokeMin || link.stroke > link.strokeMax)) {
+          return `Link ${link.id}: feasible geometry gives stroke s=${fmt(link.stroke)} mm, but the allowed stroke range is ${strokeRangeText(link)} mm. The geometry is solvable mathematically, but the actuator limit blocks this pose.`;
+        }
+        if (Math.abs(link.residual || 0) > 0.01) {
+          const distance = length(subtract(link.targetJoint, link.sliderPoint));
+          return `Link ${link.id}: after substituting s=${fmt(link.stroke)} mm, distance ||q-(b+s v)||=${fmt(distance)} mm, but chain reach must be inside [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] mm. Residual=${fmt(link.residual)} mm.`;
+        }
+        return "";
+      }
+      if (link.type === "couplerSlider") {
+        if (!Number.isFinite(link.stroke)) {
+          return `Coupler ${couplerGroupKey(link)} / Link ${link.id}: the shared coupler solve could not find a finite slider stroke. This usually means the rods in that coupler group ask the same slider block to be in incompatible places.`;
+        }
+        if (link.stroke < link.strokeMin || link.stroke > link.strokeMax) {
+          return `Coupler ${couplerGroupKey(link)} / Link ${link.id}: solved shared stroke s=${fmt(link.stroke)} mm is outside the allowed range ${strokeRangeText(link)} mm.`;
+        }
+        if (Math.abs(link.residual || 0) > 0.01 || Math.abs(link.couplerSolution.maxResidual || 0) > 0.01) {
+          const distance = length(subtract(link.targetJoint, link.couplerPoint));
+          return `Coupler ${couplerGroupKey(link)} / Link ${link.id}: after substituting the shared stroke, distance ||q-k||=${fmt(distance)} mm but rod length is ${fmt(link.length)} mm. Link residual=${fmt(link.residual)} mm; group max residual=${fmt(link.couplerSolution.maxResidual)} mm.`;
+        }
+        return "";
+      }
+      if (!Number.isFinite(link.stroke)) {
+        if (Number.isFinite(link.discriminant) && link.discriminant < 0) {
+          return `Slider ${link.id}: solve ||q-(b+s v)||=L. With q=${vec(link.targetJoint)}, b=${vec(link.base)}, v=${vec(link.v)}, L=${fmt(link.length)} mm, the quadratic is A s^2 + B s + C = 0 where A=${fmt(link.aCoeff)}, B=${fmt(link.bCoeff)}, C=${fmt(link.cCoeff)}. Discriminant D=B^2-4AC=${fmt(link.discriminant)} < 0, so there is no real stroke s.`;
+        }
+        return `Slider ${link.id}: no finite stroke can be selected for this branch. Roots are minus=${fmt(link.minusStroke)} mm and plus=${fmt(link.plusStroke)} mm.`;
+      }
+      if (link.stroke < link.strokeMin || link.stroke > link.strokeMax) {
+        return `Slider ${link.id}: the selected root is s=${fmt(link.stroke)} mm, but the allowed stroke range is ${strokeRangeText(link)} mm. The mathematical root exists, but the actuator cannot travel that far.`;
+      }
+      if (Math.abs(link.residual || 0) > 0.01) {
+        const distance = length(subtract(link.targetJoint, link.sliderPoint));
+        return `Slider ${link.id}: after substituting s=${fmt(link.stroke)} mm into m=b+s v, distance ||q-m||=${fmt(distance)} mm, expected L=${fmt(link.length)} mm, residual=${fmt(link.residual)} mm.`;
+      }
+      return "";
+    }
+
+    function frameFailureExplanations(frame) {
+      if (!frame) return [];
+      return frame.result.links.map(linkFailureExplanation).filter(Boolean);
+    }
+
     function frameStatus(frame) {
-      if (frame.result.links.some((link) => link.type !== "fixed" && !Number.isFinite(link.stroke))) {
-        return { text: "unreachable", className: "status-bad", detail: "At least one slider or chain has no solution at this middle pose." };
+      const reasons = frameFailureExplanations(frame);
+      if (reasons.some((reason) => reason.includes("no real stroke") || reason.includes("no slider stroke") || reason.includes("could not find a finite") || reason.includes("no finite stroke"))) {
+        return { text: "unreachable", className: "status-bad", detail: reasons.join(" ") };
       }
-      if (frame.result.links.some((link) => link.type !== "fixed" && Number.isFinite(link.stroke) && (link.stroke < link.strokeMin || link.stroke > link.strokeMax))) {
-        return { text: "stroke limit", className: "status-bad", detail: "At least one actuator stroke is outside the specified min/max range." };
+      if (reasons.some((reason) => reason.includes("allowed stroke range"))) {
+        return { text: "stroke limit", className: "status-bad", detail: reasons.join(" ") };
       }
-      if (frame.result.links.some((link) => Math.abs(link.residual || 0) > 0.01)) {
-        return { text: "residual", className: "status-warn", detail: "At least one fixed, chain, or coupler constraint has a length residual." };
+      if (reasons.length) {
+        return { text: "residual", className: "status-warn", detail: reasons.join(" ") };
       }
       return { text: "ok", className: "status-ok", detail: "This middle pose is reachable." };
     }
@@ -1354,7 +1414,13 @@
 
     function renderIK(result) {
       const unit = "mm";
-      el("ik-output").innerHTML = result.links.map((link) => {
+      const reasons = result.links.map(linkFailureExplanation).filter(Boolean);
+      const overall = reasons.length
+        ? `<div class="check-summary"><strong><span class="status-badge status-bad">cannot reach</span> Target pose fails because at least one link constraint fails.</strong><div class="mini">The platform pose is valid only when every link is valid at the same time. Passing A alone is not enough if B fails.</div></div>`
+        : `<div class="check-summary"><strong><span class="status-badge status-ok">reachable</span> Target pose passes the current geometric checks.</strong><div class="mini">All links have finite strokes and pass the length/range back-substitution checks.</div></div>`;
+      el("ik-output").innerHTML = `${overall}${result.links.map((link) => {
+        const reason = linkFailureExplanation(link);
+        const reasonHtml = reason ? `<div class="mini"><strong>Why this link fails:</strong> ${reason}</div>` : "";
         if (link.type === "fixed") {
           return `
             <div class="step">
@@ -1363,6 +1429,7 @@
                 <strong>Fixed anchor ${link.id}: length error residual = ${fmt(link.residual)} ${unit}</strong>
                 <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}</div>
                 <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+                ${reasonHtml}
               </div>
             </div>
           `;
@@ -1379,6 +1446,7 @@
                 <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
                 <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
                 <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+                ${reasonHtml}
               </div>
             </div>
           `;
@@ -1393,6 +1461,7 @@
                 <div class="mini">rod length residual = ${fmt(link.residual)} ${unit}; group max residual = ${fmt(link.couplerSolution.maxResidual)} ${unit}</div>
                 <div class="mini">matrix solve: ${link.couplerSolution.selectionReason}</div>
                 <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+                ${reasonHtml}
               </div>
             </div>
           `;
@@ -1405,10 +1474,11 @@
               <div class="mini">two roots: minus = ${fmt(link.minusStroke)} ${unit}, plus = ${fmt(link.plusStroke)} ${unit}</div>
               <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}; length error residual = ${fmt(link.residual)} ${unit}</div>
               <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+              ${reasonHtml}
             </div>
           </div>
         `;
-      }).join("");
+      }).join("")}`;
       el("out-x").textContent = `${fmt(result.pose.position[0])} ${unit}`;
       el("out-y").textContent = `${fmt(result.pose.position[1])} ${unit}`;
       el("out-z").textContent = `${fmt(result.pose.position[2])} ${unit}`;
@@ -1427,6 +1497,13 @@
       const summary = failed.length
         ? `<strong><span class="status-badge status-bad">failed</span> This path did not pass the check.</strong><div class="mini">Failed steps: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}. Inspect those rows first, then check whether the corresponding actuator shows unreachable or residual.</div>`
         : `<strong><span class="status-badge status-ok">passed</span> This path currently passes the geometric reachability check.</strong><div class="mini">Every middle position has actuator strokes, and residuals are within 0.01 mm.</div>`;
+      const failureDetails = failed.length
+        ? failed.slice(0, 8).map((item) => {
+            const frame = frames[item.step - 1];
+            const reasons = frameFailureExplanations(frame);
+            return `<div class="mini"><strong>Step ${item.step} calculation:</strong> ${reasons.length ? reasons.join(" ") : item.detail}</div>`;
+          }).join("")
+        : "";
       const liftSummary = liftSearch.found
         ? `<strong><span class="status-badge status-ok">lift found</span> Minimum feasible lift h = ${fmt(liftSearch.trial.h)} mm.</strong>
            <div class="mini">Tested path: Current -> W1 -> W2 -> Target, where W1 = ${vec(liftSearch.trial.w1.position)} and W2 = ${vec(liftSearch.trial.w2.position)}. Search step is ${fmt(readNumber("lift-step"))} mm, so the true minimum may lie within one step.</div>`
@@ -1455,6 +1532,7 @@
         <div class="check-summary">
           ${summary}
           <div class="mini">How to use it: set <code>Current</code> on the left, set <code>Target</code> above, then check whether this panel shows <code>PASSED</code>. If it fails, increase <code>Steps</code>, for example to 20 or 50, to locate where the path gets stuck.</div>
+          ${failureDetails}
         </div>
         <div class="check-summary">
           ${liftSummary}
@@ -1503,12 +1581,17 @@
       const residuals = frame.result.links.map((link) => Math.abs(verificationForLink(link).residual || 0));
       const maxResidual = residuals.length ? Math.max(...residuals) : 0;
       const status = frameStatus(frame);
+      const explanations = frameFailureExplanations(frame);
+      const explanationBlock = explanations.length
+        ? `<div class="check-summary"><strong>Why the whole pose fails</strong><div class="mini">Verification is an all-links-at-once check: if A passes but B fails, the sample pose is still not reachable.</div>${explanations.map((reason) => `<div class="mini">${reason}</div>`).join("")}</div>`
+        : "";
       el("verification-output").innerHTML = `
         <div class="check-summary">
-          <strong><span class="status-badge ${status.className}">${status.text}</span> Back-substitution check for the current animation frame</strong>
+          <strong><span class="status-badge ${status.className}">${status.text}</span> Back-substitution check for the selected/previewed frame</strong>
           <div class="mini">Frame ${frame.index + 1}: sample p = ${vec(frame.pose.position)}, yaw/pitch/roll = ${fmt(frame.pose.yaw)}, ${fmt(frame.pose.pitch)}, ${fmt(frame.pose.roll)}。Max |residual| = ${fmt(maxResidual)} mm。</div>
           <div class="mini">Verification rule: substitute the computed <code>s</code> back into <code>m=b+s v</code>, then check whether <code>distance=||q-m||</code> equals the rod length or lies inside the chain reach interval.</div>
         </div>
+        ${explanationBlock}
         <div class="table-wrap">
           <table>
             <thead>
@@ -1815,6 +1898,9 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       const directFrames = calculateTrajectory();
       const liftSearch = calculateLiftSearch();
       const frames = animationFrames(directFrames, liftSearch);
+      if (!animationState.playing && animationState.previewTarget && frames.length) {
+        animationState.frameIndex = frames.length - 1;
+      }
       updateAnimationControls(frames);
       const result = frames[animationState.frameIndex] ? frames[animationState.frameIndex].result : calculateIK();
       renderIK(result);
@@ -2032,12 +2118,13 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       }
       if (event.target.id === "anim-frame") {
         animationState.frameIndex = Number.parseInt(event.target.value, 10) || 0;
+        animationState.previewTarget = false;
         stopAnimation();
       } else if (event.target.id === "anim-path") {
         stopAnimation();
-        animationState.frameIndex = 0;
+        animationState.previewTarget = true;
       } else if (!event.target.id || !event.target.id.startsWith("anim-")) {
-        animationState.frameIndex = 0;
+        animationState.previewTarget = true;
       }
       draw();
     }
@@ -2050,11 +2137,15 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         if (animationState.playing) {
           stopAnimation();
         } else {
+          animationState.previewTarget = false;
+          animationState.frameIndex = 0;
+          draw();
           startAnimation();
         }
       }
       if (event.target.id === "anim-reset") {
         stopAnimation();
+        animationState.previewTarget = false;
         animationState.frameIndex = 0;
         draw();
       }
@@ -2062,7 +2153,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         syncConstraintsFromInputs();
         constraints = constraints.filter((item) => item.id !== event.target.dataset.remove);
         renderConstraints();
-        animationState.frameIndex = 0;
+        animationState.previewTarget = true;
         draw();
       }
     });

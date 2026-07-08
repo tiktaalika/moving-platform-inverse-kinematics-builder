@@ -692,7 +692,7 @@
     const readNumber = (id) => Number.parseFloat(el(id).value) || 0;
     const toRad = (deg) => deg * Math.PI / 180;
     const viewState = { yaw: -0.72, pitch: 0.82, zoom: 16, dragging: false, lastX: 0, lastY: 0 };
-    const animationState = { playing: false, frameIndex: 0, lastTime: 0, rafId: null };
+    const animationState = { playing: false, frameIndex: 0, lastTime: 0, rafId: null, previewTarget: true };
 
     function rotationMatrix(yawDeg, pitchDeg, rollDeg) {
       const yaw = toRad(yawDeg);
@@ -1196,15 +1196,75 @@
       return calculateTrajectoryFromWaypoints([start, end], readNumber("trajectory-steps"));
     }
 
+    function strokeRangeText(link) {
+      return `[${fmt(link.strokeMin)}, ${fmt(link.strokeMax)}]`;
+    }
+
+    function linkFailureExplanation(link) {
+      if (link.type === "fixed") {
+        const distance = length(subtract(link.targetJoint, link.base));
+        const residual = distance - link.length;
+        if (Math.abs(residual) <= 0.01) return "";
+        return `固定杆 ${link.id}: q=${vec(link.targetJoint)}, 固定点 f=${vec(link.base)}。距离 ||q-f||=${fmt(distance)} mm, 要求杆长 L=${fmt(link.length)} mm, 所以 residual=${fmt(residual)} mm。固定杆不能改变长度，因此这个姿态不可行。`;
+      }
+      if (link.type === "chainSlider") {
+        const h = Math.sqrt(link.h2 || 0);
+        if (!link.feasibleIntervals.length) {
+          return `连杆 ${link.id}: q=${vec(link.targetJoint)}, slider base b=${vec(link.base)}, axis v=${vec(link.v)}。沿 slider 的投影 a=(q-b) dot v=${fmt(dot(link.c, link.v))} mm，垂直距离 h=sqrt(||q-b||^2-a^2)=${fmt(h)} mm。多段连杆可达范围是 [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] mm。因为 h 大于最大可达长度，所以任何 stroke 都够不到 q。`;
+        }
+        if (Number.isFinite(link.stroke) && (link.stroke < link.strokeMin || link.stroke > link.strokeMax)) {
+          return `连杆 ${link.id}: 几何上算出的 stroke 是 s=${fmt(link.stroke)} mm，但允许范围是 ${strokeRangeText(link)} mm。数学上有解，但 actuator 行程不够。`;
+        }
+        if (Math.abs(link.residual || 0) > 0.01) {
+          const distance = length(subtract(link.targetJoint, link.sliderPoint));
+          return `连杆 ${link.id}: 把 s=${fmt(link.stroke)} mm 代回去以后，距离 ||q-(b+s v)||=${fmt(distance)} mm，但多段连杆距离必须在 [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] mm 内。Residual=${fmt(link.residual)} mm。`;
+        }
+        return "";
+      }
+      if (link.type === "couplerSlider") {
+        if (!Number.isFinite(link.stroke)) {
+          return `Coupler ${couplerGroupKey(link)} / 连杆 ${link.id}: 共享 coupler 求解没有找到有限的 slider stroke。通常表示同一个 slider block 被多根杆要求到彼此不兼容的位置。`;
+        }
+        if (link.stroke < link.strokeMin || link.stroke > link.strokeMax) {
+          return `Coupler ${couplerGroupKey(link)} / 连杆 ${link.id}: 求出的共享 stroke s=${fmt(link.stroke)} mm 超出允许范围 ${strokeRangeText(link)} mm。`;
+        }
+        if (Math.abs(link.residual || 0) > 0.01 || Math.abs(link.couplerSolution.maxResidual || 0) > 0.01) {
+          const distance = length(subtract(link.targetJoint, link.couplerPoint));
+          return `Coupler ${couplerGroupKey(link)} / 连杆 ${link.id}: 代入共享 stroke 后，距离 ||q-k||=${fmt(distance)} mm，但杆长是 ${fmt(link.length)} mm。该杆 residual=${fmt(link.residual)} mm；group max residual=${fmt(link.couplerSolution.maxResidual)} mm。`;
+        }
+        return "";
+      }
+      if (!Number.isFinite(link.stroke)) {
+        if (Number.isFinite(link.discriminant) && link.discriminant < 0) {
+          return `Slider ${link.id}: 求解 ||q-(b+s v)||=L。这里 q=${vec(link.targetJoint)}, b=${vec(link.base)}, v=${vec(link.v)}, L=${fmt(link.length)} mm，二次方程是 A s^2 + B s + C = 0，其中 A=${fmt(link.aCoeff)}, B=${fmt(link.bCoeff)}, C=${fmt(link.cCoeff)}。判别式 D=B^2-4AC=${fmt(link.discriminant)} < 0，所以没有实数 stroke s。`;
+        }
+        return `Slider ${link.id}: 当前分支找不到有限 stroke。两个根是 minus=${fmt(link.minusStroke)} mm，plus=${fmt(link.plusStroke)} mm。`;
+      }
+      if (link.stroke < link.strokeMin || link.stroke > link.strokeMax) {
+        return `Slider ${link.id}: 选中的根是 s=${fmt(link.stroke)} mm，但允许 stroke 范围是 ${strokeRangeText(link)} mm。数学根存在，但 actuator 到不了这个行程。`;
+      }
+      if (Math.abs(link.residual || 0) > 0.01) {
+        const distance = length(subtract(link.targetJoint, link.sliderPoint));
+        return `Slider ${link.id}: 把 s=${fmt(link.stroke)} mm 代入 m=b+s v 后，距离 ||q-m||=${fmt(distance)} mm，期望杆长 L=${fmt(link.length)} mm，residual=${fmt(link.residual)} mm。`;
+      }
+      return "";
+    }
+
+    function frameFailureExplanations(frame) {
+      if (!frame) return [];
+      return frame.result.links.map(linkFailureExplanation).filter(Boolean);
+    }
+
     function frameStatus(frame) {
-      if (frame.result.links.some((link) => link.type !== "fixed" && !Number.isFinite(link.stroke))) {
-        return { text: "unreachable", className: "status-bad", detail: "至少一个 slider/chain 在这一中间位姿无解" };
+      const reasons = frameFailureExplanations(frame);
+      if (reasons.some((reason) => reason.includes("没有实数") || reason.includes("任何 stroke 都够不到") || reason.includes("没有找到有限") || reason.includes("找不到有限"))) {
+        return { text: "unreachable", className: "status-bad", detail: reasons.join(" ") };
       }
-      if (frame.result.links.some((link) => link.type !== "fixed" && Number.isFinite(link.stroke) && (link.stroke < link.strokeMin || link.stroke > link.strokeMax))) {
-        return { text: "stroke limit", className: "status-bad", detail: "至少一个 actuator stroke 超出设定 min/max" };
+      if (reasons.some((reason) => reason.includes("允许范围") || reason.includes("允许 stroke 范围"))) {
+        return { text: "stroke limit", className: "status-bad", detail: reasons.join(" ") };
       }
-      if (frame.result.links.some((link) => Math.abs(link.residual || 0) > 0.01)) {
-        return { text: "residual", className: "status-warn", detail: "至少一条 fixed 或 chain 约束有长度误差" };
+      if (reasons.length) {
+        return { text: "residual", className: "status-warn", detail: reasons.join(" ") };
       }
       return { text: "ok", className: "status-ok", detail: "这一中间位姿可达" };
     }
@@ -1354,7 +1414,13 @@
 
     function renderIK(result) {
       const unit = "mm";
-      el("ik-output").innerHTML = result.links.map((link) => {
+      const reasons = result.links.map(linkFailureExplanation).filter(Boolean);
+      const overall = reasons.length
+        ? `<div class="check-summary"><strong><span class="status-badge status-bad">到不了</span> Target pose 失败，因为至少一条连杆约束不满足。</strong><div class="mini">平台位姿必须让所有连杆同时成立。A 可以但 B 不可以时，整个平台这一帧仍然不可行。</div></div>`
+        : `<div class="check-summary"><strong><span class="status-badge status-ok">可达</span> Target pose 通过当前几何校验。</strong><div class="mini">所有连杆都有有限 stroke，并且代回杆长/行程范围后都通过。</div></div>`;
+      el("ik-output").innerHTML = `${overall}${result.links.map((link) => {
+        const reason = linkFailureExplanation(link);
+        const reasonHtml = reason ? `<div class="mini"><strong>为什么这条杆不行：</strong> ${reason}</div>` : "";
         if (link.type === "fixed") {
           return `
             <div class="step">
@@ -1363,6 +1429,7 @@
                 <strong>Fixed anchor ${link.id}: length error residual = ${fmt(link.residual)} ${unit}</strong>
                 <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}</div>
                 <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+                ${reasonHtml}
               </div>
             </div>
           `;
@@ -1379,6 +1446,7 @@
                 <div class="mini">chain lengths = [${link.chainLengthsArray.map((item) => fmt(item)).join(", ")}] ${unit}; reach interval = [${fmt(link.reach.min)}, ${fmt(link.reach.max)}] ${unit}</div>
                 <div class="mini">feasible stroke interval = ${intervals}; reach residual = ${fmt(link.residual)} ${unit}</div>
                 <div class="mini">effective chain pose: center = ${vec(link.rod.center)} ${unit}; direction = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+                ${reasonHtml}
               </div>
             </div>
           `;
@@ -1393,6 +1461,7 @@
                 <div class="mini">rod length residual = ${fmt(link.residual)} ${unit}; group max residual = ${fmt(link.couplerSolution.maxResidual)} ${unit}</div>
                 <div class="mini">matrix solve: ${link.couplerSolution.selectionReason}</div>
                 <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+                ${reasonHtml}
               </div>
             </div>
           `;
@@ -1405,10 +1474,11 @@
               <div class="mini">two roots: minus = ${fmt(link.minusStroke)} ${unit}, plus = ${fmt(link.plusStroke)} ${unit}</div>
               <div class="mini">sample connection point q${link.id} = [${fmt(link.targetJoint[0])}, ${fmt(link.targetJoint[1])}, ${fmt(link.targetJoint[2])}] ${unit}; length error residual = ${fmt(link.residual)} ${unit}</div>
               <div class="mini">rod pose: center = ${vec(link.rod.center)} ${unit}; rod axis = ${vec(link.rod.axis)}; yaw = ${fmt(link.rod.yaw)} deg; pitch = ${fmt(link.rod.pitch)} deg</div>
+              ${reasonHtml}
             </div>
           </div>
         `;
-      }).join("");
+      }).join("")}`;
       el("out-x").textContent = `${fmt(result.pose.position[0])} ${unit}`;
       el("out-y").textContent = `${fmt(result.pose.position[1])} ${unit}`;
       el("out-z").textContent = `${fmt(result.pose.position[2])} ${unit}`;
@@ -1427,6 +1497,13 @@
       const summary = failed.length
         ? `<strong><span class="status-badge status-bad">failed</span> 这条路径没有通过检查。</strong><div class="mini">失败 step: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}。先看这些行的 status，再看对应 actuator 是否显示 unreachable 或 residual。</div>`
         : `<strong><span class="status-badge status-ok">passed</span> 这条路径目前通过几何可达性检查。</strong><div class="mini">所有 middle positions 都能算出 actuator stroke，且 residual 在 0.01 mm 内。</div>`;
+      const failureDetails = failed.length
+        ? failed.slice(0, 8).map((item) => {
+            const frame = frames[item.step - 1];
+            const reasons = frameFailureExplanations(frame);
+            return `<div class="mini"><strong>Step ${item.step} 计算过程：</strong> ${reasons.length ? reasons.join(" ") : item.detail}</div>`;
+          }).join("")
+        : "";
       const liftSummary = liftSearch.found
         ? `<strong><span class="status-badge status-ok">lift found</span> 最小可行抬高量 h = ${fmt(liftSearch.trial.h)} mm。</strong>
            <div class="mini">测试路径：Current -> W1 -> W2 -> Target，其中 W1 = ${vec(liftSearch.trial.w1.position)}，W2 = ${vec(liftSearch.trial.w2.position)}。搜索步长是 ${fmt(readNumber("lift-step"))} mm，所以真实最小值可能在这个步长以内。</div>`
@@ -1455,6 +1532,7 @@
         <div class="check-summary">
           ${summary}
           <div class="mini">怎么用：先填左侧 <code>Current</code>，再填上方 <code>Target</code>，然后看这里是否 <code>PASSED</code>。如果失败，把 <code>Steps</code> 加大，例如 20 或 50，可以更细地找出中间哪一步卡住。</div>
+          ${failureDetails}
         </div>
         <div class="check-summary">
           ${liftSummary}
@@ -1503,12 +1581,17 @@
       const residuals = frame.result.links.map((link) => Math.abs(verificationForLink(link).residual || 0));
       const maxResidual = residuals.length ? Math.max(...residuals) : 0;
       const status = frameStatus(frame);
+      const explanations = frameFailureExplanations(frame);
+      const explanationBlock = explanations.length
+        ? `<div class="check-summary"><strong>为什么整个平台姿态失败</strong><div class="mini">Verification 是所有连杆同时成立的检查：A 通过但 B 不通过时，这个 sample pose 仍然不可达。</div>${explanations.map((reason) => `<div class="mini">${reason}</div>`).join("")}</div>`
+        : "";
       el("verification-output").innerHTML = `
         <div class="check-summary">
-          <strong><span class="status-badge ${status.className}">${status.text}</span> 当前动画帧反代检查</strong>
+          <strong><span class="status-badge ${status.className}">${status.text}</span> 当前选中/预览帧反代检查</strong>
           <div class="mini">Frame ${frame.index + 1}: sample p = ${vec(frame.pose.position)}, yaw/pitch/roll = ${fmt(frame.pose.yaw)}, ${fmt(frame.pose.pitch)}, ${fmt(frame.pose.roll)}。Max |residual| = ${fmt(maxResidual)} mm。</div>
           <div class="mini">验证规则：用程序算出的 <code>s</code> 反代 <code>m=b+s v</code>，再检查 <code>distance=||q-m||</code> 是否等于杆长或落在 chain reach 区间内。</div>
         </div>
+        ${explanationBlock}
         <div class="table-wrap">
           <table>
             <thead>
@@ -1815,6 +1898,9 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       const directFrames = calculateTrajectory();
       const liftSearch = calculateLiftSearch();
       const frames = animationFrames(directFrames, liftSearch);
+      if (!animationState.playing && animationState.previewTarget && frames.length) {
+        animationState.frameIndex = frames.length - 1;
+      }
       updateAnimationControls(frames);
       const result = frames[animationState.frameIndex] ? frames[animationState.frameIndex].result : calculateIK();
       renderIK(result);
@@ -2032,12 +2118,13 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
       }
       if (event.target.id === "anim-frame") {
         animationState.frameIndex = Number.parseInt(event.target.value, 10) || 0;
+        animationState.previewTarget = false;
         stopAnimation();
       } else if (event.target.id === "anim-path") {
         stopAnimation();
-        animationState.frameIndex = 0;
+        animationState.previewTarget = true;
       } else if (!event.target.id || !event.target.id.startsWith("anim-")) {
-        animationState.frameIndex = 0;
+        animationState.previewTarget = true;
       }
       draw();
     }
@@ -2050,11 +2137,15 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         if (animationState.playing) {
           stopAnimation();
         } else {
+          animationState.previewTarget = false;
+          animationState.frameIndex = 0;
+          draw();
           startAnimation();
         }
       }
       if (event.target.id === "anim-reset") {
         stopAnimation();
+        animationState.previewTarget = false;
         animationState.frameIndex = 0;
         draw();
       }
@@ -2062,7 +2153,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         syncConstraintsFromInputs();
         constraints = constraints.filter((item) => item.id !== event.target.dataset.remove);
         renderConstraints();
-        animationState.frameIndex = 0;
+        animationState.previewTarget = true;
         draw();
       }
     });
