@@ -88,7 +88,7 @@ Z_high = max(Z_current, Z_target) + h
 
 ## Verification Panel / 反代检查
 
-Verification Panel 会对当前动画帧做反代验证：
+Verification Panel 会对当前选中或预览的帧做反代验证：
 
 ```text
 m_i = b_i + s_i v_i

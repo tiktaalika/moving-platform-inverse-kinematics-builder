@@ -529,9 +529,9 @@
 
     <section class="right">
       <section class="result" aria-live="polite">
-        <div class="readout"><span>Target X</span><strong id="out-x">0.00</strong></div>
-        <div class="readout"><span>Target Y</span><strong id="out-y">0.00</strong></div>
-        <div class="readout"><span>Target Z</span><strong id="out-z">0.00</strong></div>
+        <div class="readout"><span>Pose X</span><strong id="out-x">0.00</strong></div>
+        <div class="readout"><span>Pose Y</span><strong id="out-y">0.00</strong></div>
+        <div class="readout"><span>Pose Z</span><strong id="out-z">0.00</strong></div>
       </section>
 
       <section class="panel block" style="margin-top:16px">
@@ -722,7 +722,7 @@
       return len > 1e-9 ? scale(a, 1 / len) : [0, 0, 0];
     }
     function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
-    function fmt(value) { return Number.isFinite(value) ? value.toFixed(2) : "0.00"; }
+    function fmt(value) { return Number.isFinite(value) ? value.toFixed(2) : "n/a"; }
     function localAxis(axis) {
       if (axis === "y") return [0, 1, 0];
       if (axis === "z") return [0, 0, 1];
@@ -1497,7 +1497,7 @@
     function renderTrajectory(frames, liftSearch) {
       const movingLinks = constraints.filter((item) => item.type !== "fixed");
       if (!movingLinks.length) {
-        el("trajectory-output").innerHTML = `<div class="mini">当前没有 slider 或 multi-link slider，所以没有 actuator command。</div>`;
+        el("trajectory-output").innerHTML = `<div class="mini">当前没有 slider、multi-link slider 或 coupler slider，所以没有 actuator command。</div>`;
         return;
       }
       const header = movingLinks.map((item) => `<th>s${item.id} / Δprev</th>`).join("");
@@ -1991,7 +1991,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
         type: "slider",
         color: colors[index % colors.length],
         attach: [0, 0, 0],
-        base: [index * 2 - 4, 6, 0],
+        base: [index * 2 - 4, 0, 0],
         yaw: 0,
         pitch: 0,
         roll: 0,

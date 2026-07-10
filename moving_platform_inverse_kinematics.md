@@ -750,7 +750,7 @@ So:
 - Current GUI inverse kinematics: 4x4 transform matrix + scalar quadratic equation per slider.
 - Full pose reconstruction from many constraints: nonlinear residual vector `F(x)`, Jacobian matrix `J(x)`, and the solve `J Δx = -F` or `J^T J Δx = -J^T F`.
 
-## 6. Final Formula for the Example Mechanism
+## 6. Final Formula for the Slider-Rod Model
 
 For each leg `i = 1, 2, 3`:
 
@@ -878,25 +878,25 @@ No MATLAB, Mathematica, or numerical optimizer is required for this simplified a
 
 ## 11. What the Web GUI Does
 
-The GUI implements both formulas.
+The GUI implements the slider/rod, multi-link chain, intermediate coupler, and fixed-anchor formulas. The full local-XYZ motor formula is included in this document as a useful analytical reference, but it is not a selectable link type in the current GUI.
 
-For an example slider and rod mechanism:
+For a slider and rod mechanism:
 
 ```text
 s_i = v_i^T c_i ± sqrt( (v_i^T c_i)^2 - (c_i^T c_i - L_i^2) )
 ```
 
-For a full local XYZ motor:
+For a full local XYZ motor, the analytical reference formula is:
 
 ```text
 u_i = R_i^T( p + R(a_i - r) - b_i )
 ```
 
-It lets the user enter:
+The current GUI lets the user enter:
 
 ```text
-target platform position p
-target platform orientation R
+current and target platform position p
+current and target platform orientation R
 platform reference point r
 motor base/home points b_i
 motor local frame orientations R_i
@@ -906,7 +906,7 @@ platform attachment points a_i
 Then it outputs:
 
 ```text
-s_1, s_2, s_3
+current s_i, target s_i, delta s_i
 ```
 
-These are the required slider strokes. It also shows the equivalent local XYZ displacement as a reference.
+These are the required slider/coupler strokes and command deltas for the configured links.

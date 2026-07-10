@@ -88,7 +88,7 @@ The app scans `h` from zero upward and reports the first feasible lift height.
 
 ## Verification Panel
 
-The verification panel performs a back-substitution check for the current animation frame:
+The verification panel performs a back-substitution check for the selected or previewed frame:
 
 ```text
 m_i = b_i + s_i v_i
