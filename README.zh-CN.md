@@ -72,6 +72,8 @@ Current -> middle frames -> Target
 - stroke 是否超出 min/max，
 - 通过“选离上一帧最近的根”来保持 branch 连续。
 
+这里做的是离散采样路径检查。通过表示所有已采样位姿都满足当前几何检查，不等于数学上证明两个采样点之间处处无碰撞且可达。姿态插值会沿 yaw/pitch/roll 的最短角度变化方向进行。
+
 程序也可以自动搜索抬高路径：
 
 ```text
@@ -84,7 +86,7 @@ Current -> W1 -> W2 -> Target
 Z_high = max(Z_current, Z_target) + h
 ```
 
-程序从 `h=0` 开始往上搜索，找到第一个可行的 lift height。
+程序从 `h=0` 开始，在自动估算的启发式范围内向上搜索，找到第一个采样可行的 lift height。显示 `not found` 不等于证明不存在 lift path。
 
 ## Verification Panel / 反代检查
 
@@ -103,6 +105,8 @@ Rmin <= distance <= Rmax
 ```
 
 这个面板是判断程序结果是否可信的主要依据。不要只看最终 stroke，要看反代后的 distance 和 residual。
+
+同一个 `intermediate coupler slider` group 共享该组第一条连杆的 base、姿态和 slider axis。如果其他组员填写了不同的共享几何参数，程序会报告 configuration error。
 
 ## 现在还不是工业级仿真器
 

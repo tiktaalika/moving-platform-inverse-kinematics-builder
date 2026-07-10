@@ -505,7 +505,7 @@
       <section class="panel block">
         <h2 class="section-title">运动轨迹 / Middle positions</h2>
         <div class="mini" style="margin-bottom:10px">
-          这里不是设置 motor 本身，而是检查 sample 从 <code>Current Position</code> 到 <code>Target Position</code> 的路径。画布会同时显示 current 和 target 两个位姿，坐标都按全局坐标理解。
+          这里不是设置 motor 本身，而是检查 sample 从 <code>Current Position</code> 到 <code>Target Position</code> 的路径。画布显示当前选中或正在预览的一个位姿，坐标都按全局坐标理解。
         </div>
         <div class="grid-2" style="margin-top:10px">
           <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
@@ -649,7 +649,7 @@
           <div class="formula-card">
             <strong>7. Intermediate coupler</strong>
             <p>如果多根杆接到同一个中间刚体连接块 <code>K_g</code>，它们共享同一个 stroke <code>s_g</code>，不能再完全逐条独立求解。</p>
-            <p><code>p_i(s_g)=b_g+s_g v_g+d_i</code></p>
+            <p><code>p_i(s_g)=b_g+s_g v_g+R_g d_i</code></p>
             <p><code>e_i(s_g)=||q_i-p_i(s_g)||-L_i</code></p>
             <p>把同一个 group 的 residual 叠起来：</p>
             <p><code>F(s_g)=[e_1,e_2,...]^T</code></p>
@@ -874,9 +874,13 @@
 
     function interpolatePose(start, end, t) {
       const lerp = (a, b) => a + (b - a) * t;
-      const yaw = lerp(start.yaw, end.yaw);
-      const pitch = lerp(start.pitch, end.pitch);
-      const roll = lerp(start.roll, end.roll);
+      const lerpAngle = (a, b) => {
+        const delta = ((b - a + 540) % 360) - 180;
+        return a + delta * t;
+      };
+      const yaw = lerpAngle(start.yaw, end.yaw);
+      const pitch = lerpAngle(start.pitch, end.pitch);
+      const roll = lerpAngle(start.roll, end.roll);
       return {
         position: [
           lerp(start.position[0], end.position[0]),
@@ -926,6 +930,34 @@
       return (item.couplerGroup || "K1").trim() || "K1";
     }
 
+    function vectorMatches(a, b, tolerance = 1e-9) {
+      return a.length === b.length && a.every((value, index) => Math.abs(value - b[index]) <= tolerance);
+    }
+
+    function linkConfigurationError(item) {
+      if (!(item.length > 0)) return `连杆 ${item.id}: 杆长必须大于 0。`;
+      if (item.type !== "fixed" && item.strokeMin > item.strokeMax) {
+        return `连杆 ${item.id}: Stroke min (${fmt(item.strokeMin)}) 不能大于 Stroke max (${fmt(item.strokeMax)})。`;
+      }
+      return "";
+    }
+
+    function nextConstraintId(items) {
+      const usedIds = new Set(items.map((item) => item.id));
+      let number = 0;
+      let id = "A";
+      do {
+        let value = number;
+        id = "";
+        do {
+          id = String.fromCharCode(65 + (value % 26)) + id;
+          value = Math.floor(value / 26) - 1;
+        } while (value >= 0);
+        number += 1;
+      } while (usedIds.has(id));
+      return id;
+    }
+
     function solveCouplerGroups(pose, previousStrokes) {
       const groups = {};
       constraints
@@ -943,6 +975,14 @@
         const v = transform(motorRotation, localAxis(driver.axis));
         const lower = Math.max(...items.map((item) => Number.isFinite(item.strokeMin) ? item.strokeMin : -20));
         const upper = Math.min(...items.map((item) => Number.isFinite(item.strokeMax) ? item.strokeMax : 20));
+        const configurationErrors = items.slice(1).flatMap((item) => {
+          const errors = [];
+          if (!vectorMatches(item.base, driver.base)) errors.push(`连杆 ${item.id} 的 base 与主连杆 ${driver.id} 不同`);
+          if (item.yaw !== driver.yaw || item.pitch !== driver.pitch || item.roll !== driver.roll) errors.push(`连杆 ${item.id} 的姿态与主连杆 ${driver.id} 不同`);
+          if (item.axis !== driver.axis) errors.push(`连杆 ${item.id} 的 slider axis 与主连杆 ${driver.id} 不同`);
+          return errors;
+        });
+        if (lower > upper) configurationErrors.push(`组内 stroke 范围没有公共区间`);
         const referenceValues = items.map((item) => previousStrokes && Number.isFinite(previousStrokes[item.id]) ? previousStrokes[item.id] : item.currentStroke || 0);
         let stroke = clamp(referenceValues.reduce((sum, value) => sum + value, 0) / referenceValues.length, lower, upper);
         const iterations = [];
@@ -991,6 +1031,7 @@
           iterations,
           residuals,
           maxResidual,
+          configurationErrors,
           selectionReason: `shared coupler stroke solved from ${items.length} rod residuals with (J^T J) Δs = -J^T F`
         };
       });
@@ -1002,6 +1043,7 @@
       const pose = poseOverride || targetPoseFromInputs();
       const couplerSolutions = solveCouplerGroups(pose, previousStrokes);
       const links = constraints.map((item) => {
+        const configurationError = linkConfigurationError(item);
         const motorRotation = rotationMatrix(item.yaw, item.pitch, item.roll);
         const targetJoint = platformPointToWorld(pose, item.attach);
         const c = subtract(targetJoint, item.base);
@@ -1014,7 +1056,7 @@
         if (item.type === "fixed") {
           const residual = length(c) - item.length;
           const rod = rodPose(item.base, targetJoint);
-          return { ...item, rotation: motorRotation, targetJoint, residual, anchor: item.base, rod };
+          return { ...item, rotation: motorRotation, targetJoint, residual, anchor: item.base, rod, configurationError };
         }
         if (item.type === "couplerSlider") {
           const key = couplerGroupKey(item);
@@ -1043,7 +1085,8 @@
             couplerSolution: solution,
             residual,
             rod,
-            selectionReason: solution.selectionReason
+            selectionReason: solution.selectionReason,
+            configurationError: configurationError || (solution.configurationErrors.length ? `Coupler ${key}: ${solution.configurationErrors.join("；")}。同一个 coupler group 的所有连杆必须使用相同的 base、姿态和 slider axis。` : "")
           };
         }
         const v = transform(motorRotation, localAxis(item.axis));
@@ -1090,7 +1133,8 @@
             sliderPoint,
             residual,
             rod,
-            selectionReason: intervals.length ? `nearest feasible stroke to reference ${fmt(referenceStroke)}` : "unreachable: slider line is outside chain reach"
+            selectionReason: intervals.length ? `nearest feasible stroke to reference ${fmt(referenceStroke)}` : "unreachable: slider line is outside chain reach",
+            configurationError
           };
         }
         const along = dot(c, v);
@@ -1146,7 +1190,8 @@
           discriminant,
           minusStroke,
           plusStroke,
-          selectionReason
+          selectionReason,
+          configurationError
         };
       });
       return { pose, links };
@@ -1206,6 +1251,7 @@
     }
 
     function linkFailureExplanation(link) {
+      if (link.configurationError) return link.configurationError;
       if (link.type === "fixed") {
         const distance = length(subtract(link.targetJoint, link.base));
         const residual = distance - link.length;
@@ -1266,6 +1312,9 @@
 
     function frameStatus(frame) {
       const reasons = frameFailureExplanations(frame);
+      if (frame.result.links.some((link) => link.configurationError)) {
+        return { text: "configuration", className: "status-bad", detail: reasons.join(" ") };
+      }
       if (reasons.some((reason) => reason.includes("没有实数") || reason.includes("任何 stroke 都够不到") || reason.includes("没有找到有限") || reason.includes("找不到有限"))) {
         return { text: "unreachable", className: "status-bad", detail: reasons.join(" ") };
       }
@@ -1279,6 +1328,19 @@
     }
 
     function verificationForLink(link) {
+      if (link.configurationError) {
+        return {
+          id: link.id,
+          type: link.type,
+          q: link.targetJoint,
+          start: link.base,
+          distance: Number.NaN,
+          target: "configuration",
+          residual: Number.NaN,
+          status: "configuration",
+          statusClass: "status-bad"
+        };
+      }
       if (link.type === "fixed") {
         const distance = length(subtract(link.targetJoint, link.base));
         const residual = distance - link.length;
@@ -1381,7 +1443,7 @@
         if (item.type === "couplerSlider") {
           const minS = Number.isFinite(item.strokeMin) ? item.strokeMin : -20;
           const maxS = Number.isFinite(item.strokeMax) ? item.strokeMax : 20;
-          const offsetZ = (item.couplerOffset || [0, 0, 0])[2] || 0;
+          const offsetZ = transform(rotation, item.couplerOffset || [0, 0, 0])[2];
           return Math.max(
             (item.base?.[2] || 0) + minS * axis[2] + offsetZ + reach,
             (item.base?.[2] || 0) + maxS * axis[2] + offsetZ + reach
@@ -1505,7 +1567,7 @@
       const failed = failedStatuses(frames);
       const summary = failed.length
         ? `<strong><span class="status-badge status-bad">failed</span> 这条路径没有通过检查。</strong><div class="mini">失败 step: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}。先看这些行的 status，再看对应 actuator 是否显示 unreachable 或 residual。</div>`
-        : `<strong><span class="status-badge status-ok">passed</span> 这条路径目前通过几何可达性检查。</strong><div class="mini">所有 middle positions 都能算出 actuator stroke，且 residual 在 0.01 mm 内。</div>`;
+        : `<strong><span class="status-badge status-ok">sampled path passed</span> 所有已采样位姿都通过几何可达性检查。</strong><div class="mini">每个采样 middle position 都能算出 actuator stroke，且 residual 在 0.01 mm 内。离散采样通过不等于已经证明整条连续路径无碰撞且处处可达。</div>`;
       const failureDetails = failed.length
         ? failed.slice(0, 8).map((item) => {
             const frame = frames[item.step - 1];
@@ -1516,8 +1578,8 @@
       const liftSummary = liftSearch.found
         ? `<strong><span class="status-badge status-ok">lift found</span> 最小可行抬高量 h = ${fmt(liftSearch.trial.h)} mm。</strong>
            <div class="mini">测试路径：Current -> W1 -> W2 -> Target，其中 W1 = ${vec(liftSearch.trial.w1.position)}，W2 = ${vec(liftSearch.trial.w2.position)}。搜索步长是 ${fmt(readNumber("lift-step"))} mm，所以真实最小值可能在这个步长以内。</div>`
-        : `<strong><span class="status-badge status-bad">no lift</span> 在自动物理搜索上限内没有找到可行抬高路径。</strong>
-           <div class="mini">这通常说明简单“先抬高再平移再下降”的路径不够，或者 fixed/chain 约束本身让这些中间位姿不兼容。</div>`;
+        : `<strong><span class="status-badge status-bad">not found</span> 在自动启发式搜索范围内没有找到可行抬高路径。</strong>
+           <div class="mini">这不等于证明不存在 lift path。可能是简单“先抬高再平移再下降”的路径或估算搜索范围不够，也可能是当前约束互不兼容。</div>`;
       const rows = frames.map((frame) => {
         const commandCells = movingLinks.map((item) => {
           const command = frame.commands[item.id];
@@ -1985,7 +2047,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
     function addConstraint() {
       syncConstraintsFromInputs();
       const index = constraints.length;
-      const id = String.fromCharCode(65 + index);
+      const id = nextConstraintId(constraints);
       constraints.push({
         id,
         type: "slider",

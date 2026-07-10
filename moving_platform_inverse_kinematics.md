@@ -810,6 +810,8 @@ s_g <- s_g + Δs
 
 This is the matrix form needed when several rods are coupled by the same intermediate body.
 
+All rods in one coupler group must use the same coupler base, orientation, and slider axis. Their local offsets `d_i` may differ. The GUI treats inconsistent shared parameters as a configuration error instead of silently using incompatible definitions.
+
 ## 8. Final Formula for a Full XYZ Motor
 
 For each motor `i = 1, 2, 3`:

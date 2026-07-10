@@ -505,7 +505,7 @@
       <section class="panel block">
         <h2 class="section-title">Motion Path / Middle Positions</h2>
         <div class="mini" style="margin-bottom:10px">
-          This section does not set the motors directly. It checks the path from <code>Current Position</code> to <code>Target Position</code>. The canvas shows both poses in global coordinates.
+          This section does not set the motors directly. It checks the path from <code>Current Position</code> to <code>Target Position</code>. The canvas shows the selected or previewed pose in global coordinates.
         </div>
         <div class="grid-2" style="margin-top:10px">
           <label>Steps <input id="trajectory-steps" type="number" min="2" max="80" step="1" value="6"></label>
@@ -649,7 +649,7 @@
           <div class="formula-card">
             <strong>7. Intermediate coupler</strong>
             <p>If multiple rods connect to the same intermediate rigid coupler <code>K_g</code>, they share one stroke <code>s_g</code> and must be solved together.</p>
-            <p><code>p_i(s_g)=b_g+s_g v_g+d_i</code></p>
+            <p><code>p_i(s_g)=b_g+s_g v_g+R_g d_i</code></p>
             <p><code>e_i(s_g)=||q_i-p_i(s_g)||-L_i</code></p>
             <p>Stack the residuals from the same coupler group:</p>
             <p><code>F(s_g)=[e_1,e_2,...]^T</code></p>
@@ -874,9 +874,13 @@
 
     function interpolatePose(start, end, t) {
       const lerp = (a, b) => a + (b - a) * t;
-      const yaw = lerp(start.yaw, end.yaw);
-      const pitch = lerp(start.pitch, end.pitch);
-      const roll = lerp(start.roll, end.roll);
+      const lerpAngle = (a, b) => {
+        const delta = ((b - a + 540) % 360) - 180;
+        return a + delta * t;
+      };
+      const yaw = lerpAngle(start.yaw, end.yaw);
+      const pitch = lerpAngle(start.pitch, end.pitch);
+      const roll = lerpAngle(start.roll, end.roll);
       return {
         position: [
           lerp(start.position[0], end.position[0]),
@@ -926,6 +930,34 @@
       return (item.couplerGroup || "K1").trim() || "K1";
     }
 
+    function vectorMatches(a, b, tolerance = 1e-9) {
+      return a.length === b.length && a.every((value, index) => Math.abs(value - b[index]) <= tolerance);
+    }
+
+    function linkConfigurationError(item) {
+      if (!(item.length > 0)) return `Link ${item.id}: rod length must be greater than zero.`;
+      if (item.type !== "fixed" && item.strokeMin > item.strokeMax) {
+        return `Link ${item.id}: Stroke min (${fmt(item.strokeMin)}) must not exceed Stroke max (${fmt(item.strokeMax)}).`;
+      }
+      return "";
+    }
+
+    function nextConstraintId(items) {
+      const usedIds = new Set(items.map((item) => item.id));
+      let number = 0;
+      let id = "A";
+      do {
+        let value = number;
+        id = "";
+        do {
+          id = String.fromCharCode(65 + (value % 26)) + id;
+          value = Math.floor(value / 26) - 1;
+        } while (value >= 0);
+        number += 1;
+      } while (usedIds.has(id));
+      return id;
+    }
+
     function solveCouplerGroups(pose, previousStrokes) {
       const groups = {};
       constraints
@@ -943,6 +975,14 @@
         const v = transform(motorRotation, localAxis(driver.axis));
         const lower = Math.max(...items.map((item) => Number.isFinite(item.strokeMin) ? item.strokeMin : -20));
         const upper = Math.min(...items.map((item) => Number.isFinite(item.strokeMax) ? item.strokeMax : 20));
+        const configurationErrors = items.slice(1).flatMap((item) => {
+          const errors = [];
+          if (!vectorMatches(item.base, driver.base)) errors.push(`base on Link ${item.id} differs from driver Link ${driver.id}`);
+          if (item.yaw !== driver.yaw || item.pitch !== driver.pitch || item.roll !== driver.roll) errors.push(`orientation on Link ${item.id} differs from driver Link ${driver.id}`);
+          if (item.axis !== driver.axis) errors.push(`slider axis on Link ${item.id} differs from driver Link ${driver.id}`);
+          return errors;
+        });
+        if (lower > upper) configurationErrors.push(`the group stroke ranges have no common interval`);
         const referenceValues = items.map((item) => previousStrokes && Number.isFinite(previousStrokes[item.id]) ? previousStrokes[item.id] : item.currentStroke || 0);
         let stroke = clamp(referenceValues.reduce((sum, value) => sum + value, 0) / referenceValues.length, lower, upper);
         const iterations = [];
@@ -991,6 +1031,7 @@
           iterations,
           residuals,
           maxResidual,
+          configurationErrors,
           selectionReason: `shared coupler stroke solved from ${items.length} rod residuals with (J^T J) Δs = -J^T F`
         };
       });
@@ -1002,6 +1043,7 @@
       const pose = poseOverride || targetPoseFromInputs();
       const couplerSolutions = solveCouplerGroups(pose, previousStrokes);
       const links = constraints.map((item) => {
+        const configurationError = linkConfigurationError(item);
         const motorRotation = rotationMatrix(item.yaw, item.pitch, item.roll);
         const targetJoint = platformPointToWorld(pose, item.attach);
         const c = subtract(targetJoint, item.base);
@@ -1014,7 +1056,7 @@
         if (item.type === "fixed") {
           const residual = length(c) - item.length;
           const rod = rodPose(item.base, targetJoint);
-          return { ...item, rotation: motorRotation, targetJoint, residual, anchor: item.base, rod };
+          return { ...item, rotation: motorRotation, targetJoint, residual, anchor: item.base, rod, configurationError };
         }
         if (item.type === "couplerSlider") {
           const key = couplerGroupKey(item);
@@ -1043,7 +1085,8 @@
             couplerSolution: solution,
             residual,
             rod,
-            selectionReason: solution.selectionReason
+            selectionReason: solution.selectionReason,
+            configurationError: configurationError || (solution.configurationErrors.length ? `Coupler ${key}: ${solution.configurationErrors.join("; ")}. All links in one coupler group must use the same base, orientation, and slider axis.` : "")
           };
         }
         const v = transform(motorRotation, localAxis(item.axis));
@@ -1090,7 +1133,8 @@
             sliderPoint,
             residual,
             rod,
-            selectionReason: intervals.length ? `nearest feasible stroke to reference ${fmt(referenceStroke)}` : "unreachable: slider line is outside chain reach"
+            selectionReason: intervals.length ? `nearest feasible stroke to reference ${fmt(referenceStroke)}` : "unreachable: slider line is outside chain reach",
+            configurationError
           };
         }
         const along = dot(c, v);
@@ -1146,7 +1190,8 @@
           discriminant,
           minusStroke,
           plusStroke,
-          selectionReason
+          selectionReason,
+          configurationError
         };
       });
       return { pose, links };
@@ -1206,6 +1251,7 @@
     }
 
     function linkFailureExplanation(link) {
+      if (link.configurationError) return link.configurationError;
       if (link.type === "fixed") {
         const distance = length(subtract(link.targetJoint, link.base));
         const residual = distance - link.length;
@@ -1266,6 +1312,9 @@
 
     function frameStatus(frame) {
       const reasons = frameFailureExplanations(frame);
+      if (frame.result.links.some((link) => link.configurationError)) {
+        return { text: "configuration", className: "status-bad", detail: reasons.join(" ") };
+      }
       if (reasons.some((reason) => reason.includes("no real stroke") || reason.includes("no slider stroke") || reason.includes("could not find a finite") || reason.includes("no finite stroke"))) {
         return { text: "unreachable", className: "status-bad", detail: reasons.join(" ") };
       }
@@ -1279,6 +1328,19 @@
     }
 
     function verificationForLink(link) {
+      if (link.configurationError) {
+        return {
+          id: link.id,
+          type: link.type,
+          q: link.targetJoint,
+          start: link.base,
+          distance: Number.NaN,
+          target: "configuration",
+          residual: Number.NaN,
+          status: "configuration",
+          statusClass: "status-bad"
+        };
+      }
       if (link.type === "fixed") {
         const distance = length(subtract(link.targetJoint, link.base));
         const residual = distance - link.length;
@@ -1381,7 +1443,7 @@
         if (item.type === "couplerSlider") {
           const minS = Number.isFinite(item.strokeMin) ? item.strokeMin : -20;
           const maxS = Number.isFinite(item.strokeMax) ? item.strokeMax : 20;
-          const offsetZ = (item.couplerOffset || [0, 0, 0])[2] || 0;
+          const offsetZ = transform(rotation, item.couplerOffset || [0, 0, 0])[2];
           return Math.max(
             (item.base?.[2] || 0) + minS * axis[2] + offsetZ + reach,
             (item.base?.[2] || 0) + maxS * axis[2] + offsetZ + reach
@@ -1505,7 +1567,7 @@
       const failed = failedStatuses(frames);
       const summary = failed.length
         ? `<strong><span class="status-badge status-bad">failed</span> This path did not pass the check.</strong><div class="mini">Failed steps: ${failed.map((item) => `${item.step} (${item.text})`).join(", ")}. Inspect those rows first, then check whether the corresponding actuator shows unreachable or residual.</div>`
-        : `<strong><span class="status-badge status-ok">passed</span> This path currently passes the geometric reachability check.</strong><div class="mini">Every middle position has actuator strokes, and residuals are within 0.01 mm.</div>`;
+        : `<strong><span class="status-badge status-ok">sampled path passed</span> All sampled poses pass the geometric reachability check.</strong><div class="mini">Every sampled middle position has actuator strokes, and residuals are within 0.01 mm. This discrete check is not a proof of continuous collision-free motion.</div>`;
       const failureDetails = failed.length
         ? failed.slice(0, 8).map((item) => {
             const frame = frames[item.step - 1];
@@ -1516,8 +1578,8 @@
       const liftSummary = liftSearch.found
         ? `<strong><span class="status-badge status-ok">lift found</span> Minimum feasible lift h = ${fmt(liftSearch.trial.h)} mm.</strong>
            <div class="mini">Tested path: Current -> W1 -> W2 -> Target, where W1 = ${vec(liftSearch.trial.w1.position)} and W2 = ${vec(liftSearch.trial.w2.position)}. Search step is ${fmt(readNumber("lift-step"))} mm, so the true minimum may lie within one step.</div>`
-        : `<strong><span class="status-badge status-bad">no lift</span> No feasible lift path was found within the automatic physical search limit.</strong>
-           <div class="mini">This usually means the simple lift-translate-lower path is not enough, or the fixed/chain/coupler constraints are incompatible with those middle poses.</div>`;
+        : `<strong><span class="status-badge status-bad">not found</span> No feasible lift path was found within the automatic heuristic search range.</strong>
+           <div class="mini">This does not prove that no lift path exists. The simple lift-translate-lower path or the estimated search range may be insufficient, or the configured constraints may be incompatible.</div>`;
       const rows = frames.map((frame) => {
         const commandCells = movingLinks.map((item) => {
           const command = frame.commands[item.id];
@@ -1985,7 +2047,7 @@ D = B^2 - 4AC   = ${fmt(link.discriminant)}</pre>
     function addConstraint() {
       syncConstraintsFromInputs();
       const index = constraints.length;
-      const id = String.fromCharCode(65 + index);
+      const id = nextConstraintId(constraints);
       constraints.push({
         id,
         type: "slider",

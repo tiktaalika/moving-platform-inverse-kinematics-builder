@@ -72,6 +72,8 @@ At each frame it recomputes all actuator commands and checks:
 - stroke min/max limits,
 - branch continuity by choosing the root nearest to the previous frame.
 
+The result is a discrete sampled-path check. A pass means that every sampled pose passed the configured geometric checks; it is not a mathematical proof that every point between samples is collision-free and reachable. Orientation interpolation follows the shortest yaw/pitch/roll angle changes.
+
 It can also search a lifted path:
 
 ```text
@@ -84,7 +86,7 @@ where:
 Z_high = max(Z_current, Z_target) + h
 ```
 
-The app scans `h` from zero upward and reports the first feasible lift height.
+The app scans `h` from zero upward inside an automatically estimated heuristic range and reports the first sampled feasible lift height. A `not found` result does not prove that no lift path exists.
 
 ## Verification Panel
 
@@ -103,6 +105,8 @@ Rmin <= distance <= Rmax
 ```
 
 This panel is the main way to audit whether the numerical result is trustworthy.
+
+Links in one `intermediate coupler slider` group share the first group member's base, orientation, and slider axis. The app reports a configuration error if another member specifies different shared geometry.
 
 ## What Is Not Yet Industrial Grade
 
