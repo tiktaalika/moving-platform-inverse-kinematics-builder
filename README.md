@@ -1,96 +1,116 @@
 # Moving Platform Inverse Kinematics (IK) Builder
 
-A single-file browser tool for checking inverse kinematics of a moving sample/platform connected by rods, fixed anchors, 1D sliders, and simplified multi-link chains.
+Browser-based teaching and prototyping tool for the inverse kinematics of a rigid moving sample/platform connected to rods, fixed anchors, one-dimensional sliders, or simplified intermediate mechanisms.
 
-Repository:
+> **Demo only — not for machine safety validation or direct machine control.**
 
-[https://github.com/tiktaalika/moving-platform-inverse-kinematics-builder](https://github.com/tiktaalika/moving-platform-inverse-kinematics-builder)
+- [English web app](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html)
+- [Chinese web app](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/)
+- [中文说明](#中文说明)
 
-Live web app:
+## English
 
-- English: [https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/index-en.html)
-- Chinese: [https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/](https://tiktaalika.github.io/moving-platform-inverse-kinematics-builder/)
+### Purpose
 
-`IK` is short for `inverse kinematics`. The title keeps both the full term and the abbreviation so the purpose is clear to both robotics and non-robotics readers.
-
-## Usage
-
-This is a static browser app. Use `index-en.html` for the English interface or `index.html` for the Chinese interface.
-
-The app starts with an empty mechanism:
-
-- `Current Position = [0, 0, 0]`
-- `Target Position = [0, 0, 0]`
-- no links are defined by default
-
-Use **Add link** to build the mechanism from scratch. The current public version does not include a built-in sample-mechanism button.
-
-## What It Solves
-
-Given a current sample pose and a target sample pose:
+Given a current sample pose and a target sample pose, the app computes the actuator positions required by the configured geometric constraints:
 
 ```text
-p_current, R_current
-p_target,  R_target
+Current pose -> current actuator stroke
+Target pose  -> target actuator stroke
+Delta stroke = target stroke - current stroke
 ```
 
-the app computes each sample attachment point:
+It also samples intermediate poses and checks whether every configured link can satisfy its geometric constraint at each sample.
+
+### Coordinate model
+
+The sample is a rigid body. Let:
+
+- `p` be the global position of the sample reference point;
+- `R` be the sample rotation matrix;
+- `r` be the reference point in sample-local coordinates;
+- `a_i` be attachment point `i` in sample-local coordinates;
+- `q_i` be the same attachment point in global coordinates.
+
+The rigid-body transformation is:
 
 ```text
 q_i = p + R(a_i - r)
 ```
 
-It solves the current stroke from the current pose and the target stroke from the target pose:
+The GUI uses yaw, pitch, and roll with:
 
 ```text
-current s_i = IK(Current Pose)
-target  s_i = IK(Target Pose)
-delta   s_i = target s_i - current s_i
+R = Rz(yaw) Ry(pitch) Rx(roll)
 ```
 
-Then it solves each link type:
+`Attach local XYZ` is therefore sample-local. Slider bases and fixed anchors are global coordinates.
 
-- `1D slider`: analytic quadratic solution for the actuator stroke.
-- `multi-link to slider`: feasible stroke interval from chain reach.
-- `intermediate coupler slider`: several rods share one motor-side rigid coupler stroke and are solved together with a residual/Jacobian matrix.
-- `fixed anchor`: constraint residual check.
+### Supported link types
 
-The per-link **Branch hint s** input is not the physical current stroke reported in the result. It is only a branch-selection hint when a slider equation has multiple valid roots. The displayed `current s_i` is solved from `Current Position`.
+#### 1D slider and fixed-length rod
 
-## Path Check
-
-The app samples a path from current pose to target pose:
+For slider base `b_i`, global unit direction `v_i`, stroke `s_i`, and rod length `L_i`:
 
 ```text
-Current -> middle frames -> Target
+m_i(s_i) = b_i + s_i v_i
+||q_i - m_i(s_i)||² = L_i²
 ```
 
-At each frame it recomputes all actuator commands and checks:
-
-- reachability,
-- residual error,
-- stroke min/max limits,
-- branch continuity by choosing the root nearest to the previous frame.
-
-The result is a discrete sampled-path check. A pass means that every sampled pose passed the configured geometric checks; it is not a mathematical proof that every point between samples is collision-free and reachable. Orientation interpolation follows the shortest yaw/pitch/roll angle changes.
-
-It can also search a lifted path:
+Let `c_i = q_i - b_i`. The stroke is obtained analytically:
 
 ```text
-Current -> W1 -> W2 -> Target
+s_i = v_iᵀc_i ± sqrt((v_iᵀc_i)² - (c_iᵀc_i - L_i²))
 ```
 
-where:
+A negative square-root term means that no real slider position reaches the requested attachment point. When two roots exist, the selected branch or the nearest previous stroke determines which root is used.
+
+#### Fixed anchor
+
+A fixed anchor has no actuator command. It is valid only when:
 
 ```text
-Z_high = max(Z_current, Z_target) + h
+residual_i = ||q_i - f_i|| - L_i ≈ 0
 ```
 
-The app scans `h` from zero upward inside an automatically estimated heuristic range and reports the first sampled feasible lift height. A `not found` result does not prove that no lift path exists.
+#### Simplified multi-link chain
 
-## Verification Panel
+For segment lengths `L_1 ... L_n`:
 
-The verification panel performs a back-substitution check for the selected or previewed frame:
+```text
+Rmax = sum(L_j)
+Rmin = max(0, Lmax - sum(other lengths))
+Rmin <= ||q_i - m_i(s_i)|| <= Rmax
+```
+
+The app returns a feasible slider-stroke interval. It does **not** determine a unique pose for every internal hinge.
+
+#### Translating rigid coupler
+
+Rods in one coupler group share one slider stroke `s_g`:
+
+```text
+k_i(s_g) = b_g + s_g v_g + R_g d_i
+e_i(s_g) = ||q_i - k_i(s_g)|| - L_i
+F(s_g)   = [e_1, e_2, ...]ᵀ
+(JᵀJ) Δs = -JᵀF
+```
+
+This is a one-variable Gauss-Newton solve. Group members must share the same base, orientation, and slider axis; only their local coupler offsets may differ.
+
+### How to use the app
+
+1. Enter sample dimensions and its local reference point.
+2. Enter the current pose and target pose in global coordinates.
+3. Add links and choose each link type.
+4. Define sample-local attachment points and global motor/anchor geometry.
+5. Check the IK result, both candidate roots, current/target stroke, and delta stroke.
+6. Inspect the trajectory table and Verification Panel.
+7. Use Play only to visualize the sampled motion; it does not change the calculation.
+
+### Verification
+
+For each sampled pose, the app substitutes the computed stroke back into the original constraint:
 
 ```text
 m_i = b_i + s_i v_i
@@ -98,34 +118,159 @@ distance = ||q_i - m_i||
 residual = distance - L_i
 ```
 
-For multi-link chains it checks whether:
+A platform pose passes only when **all** links pass simultaneously. Stroke limits and coupler configuration errors are checked as well. A small residual confirms numerical consistency with the configured model, not physical machine safety.
+
+### Model assumptions and limitations
+
+This tool is appropriate for teaching, analytical checking, and early mechanism prototyping under the following assumptions:
+
+- the sample/platform is perfectly rigid;
+- dimensions, coordinate frames, attachment points, and slider axes are exact;
+- rods are rigid and joints are ideal;
+- each simple slider link follows the model above;
+- a coupler group is a fixed-orientation rigid body translating along one axis.
+
+It does **not** provide:
+
+- collision or interference detection;
+- internal hinge positions for a general multi-link mechanism;
+- hinge-axis, hinge-angle, or joint-limit validation;
+- arbitrary rotating or nested intermediate-body kinematics;
+- continuous-path proof between sampled poses;
+- Jacobian condition-number or singularity analysis;
+- backlash, compliance, tolerances, calibration errors, or sensor uncertainty;
+- velocity, acceleration, force, torque, dynamics, or controller timing;
+- fail-safe logic, safety integrity, or machine certification.
+
+Increasing `Steps` checks more discrete poses but never proves that the continuous path is collision-free. The automatic lift search tests only a bounded lift-translate-lower strategy; `not found` does not prove that no feasible path exists.
+
+Before using results on hardware, independently validate the complete CAD/multibody model, joint limits, collisions, loads, controls, emergency stops, and applicable safety requirements.
+
+### References
+
+The design was informed by the verification concepts of [Drake](https://github.com/RobotLocomotion/drake), [Pinocchio](https://github.com/stack-of-tasks/pinocchio), and [IKPy](https://github.com/Phylliade/ikpy). No source code was copied from these projects.
+
+## 中文说明
+
+这是一个用于教学、解析检查和机构早期设计的网页工具。给定 sample/platform 的当前位姿和目标位姿，程序按照用户配置的几何约束反求 actuator 位置：
 
 ```text
-Rmin <= distance <= Rmax
+当前位姿 -> current actuator stroke
+目标位姿 -> target actuator stroke
+移动量   = target stroke - current stroke
 ```
 
-This panel is the main way to audit whether the numerical result is trustworthy.
+> **Demo only — 仅用于教学与几何验证，不可用于机器安全认证或直接控制机器。**
 
-Links in one `intermediate coupler slider` group share the first group member's base, orientation, and slider axis. The app reports a configuration error if another member specifies different shared geometry.
+### 坐标与刚体变换
 
-## What Is Not Yet Industrial Grade
+- `p`：sample 参考点的全局位置；
+- `R`：sample 的旋转矩阵；
+- `r`：sample 局部坐标中的参考点；
+- `a_i`：第 `i` 个 sample 连接点的局部坐标；
+- `q_i`：该连接点变换后的全局坐标。
 
-This tool is a geometry and teaching tool, not a full dynamics simulator. It does not yet include:
+```text
+q_i = p + R(a_i - r)
+R = Rz(yaw) Ry(pitch) Rx(roll)
+```
 
-- collision detection,
-- hinge-angle limits inside a multi-link chain,
-- Jacobian singularity / condition-number checks,
-- velocity and acceleration limits,
-- force/torque/dynamics.
+因此 `Attach local XYZ` 是 sample 局部坐标；slider base 和 fixed anchor 使用全局坐标。
 
-These are the next features to add if the tool needs to approach Drake, Simscape Multibody, or other industrial robotics simulation workflows.
+### 支持的连杆模型
 
-## References and Acknowledgements
+#### 一维 slider + 定长杆
 
-This project was designed after reviewing open-source robotics and inverse-kinematics tools. Their ideas helped clarify what should be checked in a serious IK/path-feasibility workflow. No source code from these projects was copied into this repository.
+```text
+m_i(s_i) = b_i + s_i v_i
+||q_i - m_i(s_i)||² = L_i²
+s_i = v_iᵀc_i ± sqrt((v_iᵀc_i)² - (c_iᵀc_i - L_i²))
+c_i = q_i - b_i
+```
 
-- [Drake](https://github.com/RobotLocomotion/drake): model-based robotics design and verification, constrained IK, differential IK, and joint/velocity/acceleration limits.
-- [Pinocchio](https://github.com/stack-of-tasks/pinocchio): rigid-body dynamics, analytical derivatives, constraints, and closed-loop mechanisms.
-- [IKPy](https://github.com/Phylliade/ikpy): pure-Python inverse kinematics library for serial chains and URDF models.
+根号内为负表示目标点不可达；存在两个根时，程序按照选择的 branch 或离上一帧最近的 stroke 选解。
 
-The current web app intentionally implements only the small, inspectable geometry layer needed for this moving-platform teaching problem. More industrial features, such as collision checks and Jacobian singularity checks, should be added explicitly rather than hidden inside a black-box solver.
+#### Fixed anchor
+
+Fixed anchor 没有 actuator command，只检查：
+
+```text
+residual_i = ||q_i - f_i|| - L_i ≈ 0
+```
+
+#### 简化 multi-link chain
+
+```text
+Rmax = sum(L_j)
+Rmin = max(0, Lmax - sum(other lengths))
+Rmin <= ||q_i - m_i(s_i)|| <= Rmax
+```
+
+程序只给出 slider 的可行 stroke 区间，**不会**确定每个中间铰点的唯一位置和姿态。
+
+#### 平移刚体 coupler
+
+```text
+k_i(s_g) = b_g + s_g v_g + R_g d_i
+e_i(s_g) = ||q_i - k_i(s_g)|| - L_i
+F(s_g)   = [e_1, e_2, ...]ᵀ
+(JᵀJ) Δs = -JᵀF
+```
+
+这是只有一个共享未知 stroke 的 Gauss-Newton 求解。同一 coupler group 必须共用 base、姿态和 slider axis；各杆的 coupler local offset 可以不同。
+
+### 使用步骤
+
+1. 输入 sample 尺寸和局部参考点。
+2. 输入全局 Current Pose 和 Target Pose。
+3. 添加 link 并选择类型。
+4. 填写 sample 局部连接点，以及全局 slider/anchor 几何。
+5. 检查两个候选根、current stroke、target stroke 和 delta stroke。
+6. 检查轨迹表和 Verification Panel。
+7. Play 只用于显示采样运动过程，不会改变计算结果。
+
+### Verification / 反代验证
+
+程序把求出的 stroke 代回原约束：
+
+```text
+m_i = b_i + s_i v_i
+distance = ||q_i - m_i||
+residual = distance - L_i
+```
+
+所有 link 必须同时通过，整个平台位姿才通过。程序还检查 stroke limit 和 coupler configuration error。Residual 接近零只说明结果与当前配置的数学模型一致，不代表真实机器安全。
+
+### 模型假设与局限
+
+适用前提：
+
+- sample/platform 是理想刚体；
+- 尺寸、坐标系、连接点和 slider axis 输入准确；
+- 连杆刚性、关节理想；
+- 简单 slider 符合上述一维模型；
+- coupler 是姿态固定、沿单轴平移的刚体。
+
+当前程序**不包括**：
+
+- 碰撞和空间干涉检测；
+- 一般多连杆机构的内部铰点位置；
+- hinge axis、hinge angle 和 joint limit 检查；
+- 任意旋转或多层嵌套中间机构运动学；
+- 采样点之间连续路径的严格证明；
+- Jacobian 条件数和奇异性分析；
+- 间隙、柔性、公差、标定误差和传感器不确定性；
+- 速度、加速度、力、扭矩、动力学和控制器时序；
+- fail-safe、安全完整性或机器认证。
+
+增加 `Steps` 只能增加离散检查点，不能证明连续路径无碰撞。自动 Lift 只搜索有限范围内的“抬高—平移—下降”路径；`not found` 不代表不存在其他可行路径。
+
+把结果用于硬件之前，必须另外验证完整 CAD/多体模型、关节限制、碰撞、载荷、控制系统、急停和适用的机器安全要求。
+
+### 参考
+
+项目参考了 [Drake](https://github.com/RobotLocomotion/drake)、[Pinocchio](https://github.com/stack-of-tasks/pinocchio) 和 [IKPy](https://github.com/Phylliade/ikpy) 的建模与验证思想，没有复制这些项目的源代码。
+
+## License
+
+MIT. See [LICENSE](LICENSE).
